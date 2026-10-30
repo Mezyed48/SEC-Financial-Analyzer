@@ -64,38 +64,85 @@ st.markdown("""
         background-color: #F7FAFC;
         border-left: 4px solid #1F497D;
         padding: 0.9rem 1.2rem;
-        border-radius: 4px;
+        border-radius: 6px;
         margin-bottom: 1.5rem;
         font-size: 0.95rem;
         color: #2D3748;
         line-height: 1.5;
     }
+    .company-header-card {
+        background-color: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1.25rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .company-badge {
+        background-color: #EBF8FF;
+        color: #2B6CB0;
+        border: 1px solid #BEE3F8;
+        padding: 0.35rem 0.85rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        display: inline-block;
+    }
+    .company-badge-secondary {
+        background-color: #EDF2F7;
+        color: #4A5568;
+        border: 1px solid #E2E8F0;
+        padding: 0.35rem 0.85rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        display: inline-block;
+    }
     .metric-card {
         background-color: #FFFFFF;
         border: 1px solid #E2E8F0;
         border-radius: 8px;
-        padding: 1rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        padding: 0.9rem 0.75rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         text-align: center;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
     .metric-category {
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: #718096;
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.2rem;
     }
     .metric-name {
-        font-size: 0.9rem;
+        font-size: 0.88rem;
         font-weight: 600;
         color: #2D3748;
-        margin-bottom: 0.4rem;
+        margin-bottom: 0.35rem;
     }
     .metric-val {
-        font-size: 1.6rem;
+        font-size: 1.55rem;
         font-weight: 700;
         color: #1F497D;
+        line-height: 1.2;
+    }
+    .metric-sub {
+        font-size: 0.74rem;
+        color: #718096;
+        margin-top: 0.3rem;
+        line-height: 1.2;
+    }
+    .metric-sub.positive {
+        color: #2F855A;
+        font-weight: 600;
+    }
+    .metric-sub.negative {
+        color: #C53030;
+        font-weight: 600;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -192,7 +239,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.caption("🔒 **SEC Fair Access Compliant**: Requests are throttled and use declarative User-Agent contact credentials.")
-    st.caption("📚 **Accounting Standards**: Follows U.S. GAAP ratios and Loughran-McDonald Financial Sentiment Dictionary.")
+    st.caption("📚 **Accounting Standards**: Standard financial-analysis ratios calculated using U.S. GAAP financial-statement data.")
 
 
 # ==============================================================================
@@ -311,12 +358,31 @@ if results:
     available_cats = results["available_categories"]
     output_filepath = results["output_filepath"]
 
-    # Company Header Banner
-    st.markdown(f"## 🏢 {company_name} ({ticker})")
-    badge_col1, badge_col2, badge_col3 = st.columns(3)
-    badge_col1.info(f"**SEC CIK:** `{cik}`")
-    badge_col2.info(f"**Fiscal Horizon:** `{num_years} Fiscal Years` ({analysis_data[0]['year']} – {analysis_data[-1]['year']})")
-    badge_col3.info(f"**Excel Master File:** `{Path(output_filepath).name}`")
+    # Polished Executive Company Header (Requirement 1)
+    oldest_yr = analysis_data[0]["year"]
+    latest_yr = analysis_data[-1]["year"]
+    fiscal_horizon = f"FY {oldest_yr} – FY {latest_yr}"
+    reporting_scope = f"{num_years}-Year SEC 10-K Analysis"
+    cik_str = str(cik).zfill(10)
+
+    st.markdown(f"""
+    <div class="company-header-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.85rem;">
+            <div>
+                <div style="font-size: 1.7rem; font-weight: 700; color: #1F497D; line-height: 1.25;">
+                    🏢 {company_name} <span style="font-size: 1.2rem; color: #4A5568; font-weight: 500;">({ticker})</span>
+                </div>
+                <div style="font-size: 0.92rem; color: #4A5568; margin-top: 0.35rem; line-height: 1.4;">
+                    SEC Central Index Key: <b>CIK {cik_str}</b> &nbsp;•&nbsp; Reporting Horizon: <b>{fiscal_horizon}</b> &nbsp;•&nbsp; Master Workbook: <b>{Path(output_filepath).name}</b>
+                </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                <span class="company-badge">📋 {reporting_scope}</span>
+                <span class="company-badge-secondary">📅 {num_years} Annual Filings</span>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Six Navigation Tabs
     tab_overview, tab_ratios, tab_sentiment, tab_stock, tab_statements, tab_download = st.tabs([
@@ -332,10 +398,92 @@ if results:
     # TAB 1: OVERVIEW & CHART
     # --------------------------------------------------------------------------
     with tab_overview:
-        latest = analysis_data[-1]  # Most recent fiscal year
-        st.subheader(f"Latest Fiscal Year Highlights — FY {latest['year']}")
+        oldest = analysis_data[0]
+        latest = analysis_data[-1]
 
-        col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
+        # Calculate Period Performance Metrics from existing workflow data (Requirement 2)
+        # 1. Period Stock Return
+        oldest_p = oldest.get("stock_price")
+        latest_p = latest.get("stock_price")
+        if oldest_p is not None and latest_p is not None and oldest_p > 0:
+            stock_ret_pct = ((latest_p - oldest_p) / oldest_p) * 100.0
+            stock_ret_str = f"{stock_ret_pct:+.1f}%"
+            stock_ret_cls = "positive" if stock_ret_pct >= 0 else "negative"
+            stock_ret_sub = f"FY {oldest['year']} (${oldest_p:,.2f}) → FY {latest['year']} (${latest_p:,.2f})"
+        else:
+            stock_ret_str = "N/A"
+            stock_ret_cls = ""
+            stock_ret_sub = "Price data unavailable"
+
+        # 2. Period Revenue Growth (from raw_accounts_info / statement data)
+        by_year = raw_accounts_info.get("by_year", {})
+        oldest_rev = by_year.get(oldest["year"], {}).get("revenue")
+        latest_rev = by_year.get(latest["year"], {}).get("revenue")
+        if oldest_rev is not None and latest_rev is not None and oldest_rev > 0:
+            rev_growth_pct = ((latest_rev - oldest_rev) / oldest_rev) * 100.0
+            rev_growth_str = f"{rev_growth_pct:+.1f}%"
+            rev_growth_cls = "positive" if rev_growth_pct >= 0 else "negative"
+            rev_growth_sub = f"FY {oldest['year']} (${oldest_rev:,.0f}) → FY {latest['year']} (${latest_rev:,.0f})"
+        else:
+            rev_growth_str = "N/A"
+            rev_growth_cls = ""
+            rev_growth_sub = "Revenue data unavailable"
+
+        # 3. Latest MD&A P/N Ratio
+        latest_pn = latest.get("pn_ratio")
+        latest_pn_str = f"{latest_pn:.2f}" if latest_pn is not None else "N/A"
+        latest_pn_sub = "Positive-to-Negative Words"
+
+        # 4. Latest Stock Price
+        latest_sp_str = f"${latest_p:,.2f}" if latest_p is not None else "N/A"
+        latest_sp_sub = f"FY {latest['year']} Balance Sheet Date"
+
+        # Section: Executive Summary (Requirement 2)
+        st.subheader("📌 Executive Summary")
+        st.caption(f"Comprehensive executive snapshot for **{company_name}** across the selected {reporting_scope.lower()}.")
+
+        st.markdown(f"**Period Macro Performance ({reporting_scope}: FY {oldest['year']} – FY {latest['year']})**")
+        c_p1, c_p2, c_p3, c_p4 = st.columns(4)
+
+        c_p1.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-category">Market Performance</div>
+            <div class="metric-name">Period Stock Return</div>
+            <div class="metric-val">{stock_ret_str}</div>
+            <div class="metric-sub {stock_ret_cls}">{stock_ret_sub}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        c_p2.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-category">Top-Line Expansion</div>
+            <div class="metric-name">Period Revenue Growth</div>
+            <div class="metric-val">{rev_growth_str}</div>
+            <div class="metric-sub {rev_growth_cls}">{rev_growth_sub}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        c_p3.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-category">Market Value</div>
+            <div class="metric-name">Latest Stock Price</div>
+            <div class="metric-val">{latest_sp_str}</div>
+            <div class="metric-sub">{latest_sp_sub}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        c_p4.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-category">MD&A Sentiment</div>
+            <div class="metric-name">Latest P/N Ratio</div>
+            <div class="metric-val">{latest_pn_str}</div>
+            <div class="metric-sub">{latest_pn_sub}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(f"**Latest Fiscal Year Accounting Health (FY {latest['year']})**")
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
 
         # 1. Current Ratio
         cr_val = f"{latest['current_ratio']:.2f}" if latest.get("current_ratio") is not None else "N/A"
@@ -344,6 +492,7 @@ if results:
             <div class="metric-category">Liquidity</div>
             <div class="metric-name">Current Ratio</div>
             <div class="metric-val">{cr_val}</div>
+            <div class="metric-sub">Current Assets / Liabilities</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -354,6 +503,7 @@ if results:
             <div class="metric-category">Solvency</div>
             <div class="metric-name">Debt-to-Assets</div>
             <div class="metric-val">{da_val}</div>
+            <div class="metric-sub">Total Liabilities / Assets</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -364,6 +514,7 @@ if results:
             <div class="metric-category">Efficiency</div>
             <div class="metric-name">Asset Turnover</div>
             <div class="metric-val">{at_val}</div>
+            <div class="metric-sub">Revenue / Average Assets</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -374,33 +525,38 @@ if results:
             <div class="metric-category">Profitability</div>
             <div class="metric-name">Net Margin</div>
             <div class="metric-val">{pm_val}</div>
+            <div class="metric-sub">Net Income / Revenue</div>
         </div>
         """, unsafe_allow_html=True)
 
-        # 5. P/N Ratio
-        pn_val = f"{latest['pn_ratio']:.2f}" if latest.get("pn_ratio") is not None else "N/A"
-        col_m5.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-category">MD&A Sentiment</div>
-            <div class="metric-name">P/N Ratio</div>
-            <div class="metric-val">{pn_val}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # 6. Stock Price
-        sp_val = f"${latest['stock_price']:,.2f}" if latest.get("stock_price") is not None else "N/A"
-        col_m6.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-category">Market Value</div>
-            <div class="metric-name">Stock Price</div>
-            <div class="metric-val">{sp_val}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
+        # Section: Historical Summary Table (Requirement 3)
         st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📋 Historical Summary")
+        st.caption(f"Chronological financial ratios, stock prices, and MD&A sentiment scores (oldest to newest: FY {oldest['year']} to FY {latest['year']}).")
 
-        # Interactive Dual-Axis Line Chart: Stock Price ($) vs. MD&A Sentiment P/N Ratio
-        st.subheader("Stock Price vs. MD&A Sentiment P/N Ratio")
+        hist_summary_rows = []
+        for r in analysis_data:
+            sp = f"${r['stock_price']:,.2f}" if r.get("stock_price") is not None else "N/A"
+            cr = f"{r['current_ratio']:.2f}" if r.get("current_ratio") is not None else "N/A"
+            da = f"{r['debt_to_assets'] * 100:.2f}%" if r.get("debt_to_assets") is not None else "N/A"
+            at = f"{r['asset_turnover']:.2f}" if r.get("asset_turnover") is not None else "N/A"
+            pm = f"{r['profit_margin'] * 100:.2f}%" if r.get("profit_margin") is not None else "N/A"
+            pn = f"{r['pn_ratio']:.2f}" if r.get("pn_ratio") is not None else "N/A"
+            hist_summary_rows.append({
+                "Fiscal Year": f"FY {r['year']}",
+                "Stock Price": sp,
+                "Current Ratio": cr,
+                "Debt-to-Assets": da,
+                "Total Asset Turnover": at,
+                "Net Profit Margin": pm,
+                "P/N Ratio": pn
+            })
+        df_hist = pd.DataFrame(hist_summary_rows)
+        st.dataframe(df_hist, width="stretch", hide_index=True)
+
+        # Section: Interactive Dual-Axis Line Chart (Requirement 4)
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📈 Stock Price vs. MD&A Sentiment P/N Ratio")
         st.caption("Chronological time-series comparison with dual Y-axes (Stock Price on Left, P/N Ratio on Right).")
 
         chrono_years = [str(r["year"]) for r in analysis_data]
@@ -451,6 +607,132 @@ if results:
         )
 
         st.plotly_chart(fig, width="stretch")
+
+        # Section: Optional Correlation Metric (Requirement 5)
+        # Annual stock return: (Price_t / Price_{t-1}) - 1, paired with P/N Ratio_t
+        corr_pairs = []
+        for i in range(1, len(analysis_data)):
+            p_prev = analysis_data[i-1].get("stock_price")
+            p_curr = analysis_data[i].get("stock_price")
+            pn_curr = analysis_data[i].get("pn_ratio")
+            y_curr = analysis_data[i]["year"]
+            y_prev = analysis_data[i-1]["year"]
+            if p_prev and p_curr and pn_curr is not None and p_prev > 0:
+                ret = (p_curr / p_prev) - 1.0
+                corr_pairs.append({
+                    "Fiscal Year": f"FY {y_curr}",
+                    "Return Description": f"FY {y_curr} vs. FY {y_prev}",
+                    "Stock Return": ret,
+                    "Stock Return Pct": ret * 100.0,
+                    "P/N Ratio": pn_curr
+                })
+
+        n_obs = len(corr_pairs)
+        corr_val = None
+        if n_obs >= 3:
+            s_ret = pd.Series([cp["Stock Return"] for cp in corr_pairs])
+            s_pn = pd.Series([cp["P/N Ratio"] for cp in corr_pairs])
+            if s_ret.std() > 0 and s_pn.std() > 0:
+                corr_val = s_ret.corr(s_pn)
+
+        with st.expander("📊 Exploratory Correlation: Annual Stock Price Return vs. MD&A P/N Ratio", expanded=False):
+            st.markdown("""
+            This exploratory section calculates the Pearson statistical correlation ($r$) between:
+            - **Annual Stock-Price Return**: $\\left(\\frac{\\text{Stock Price}_t}{\\text{Stock Price}_{t-1}}\\right) - 1$
+            - **Current Fiscal Year MD&A P/N Ratio**: $(\\text{P/N Ratio})_t$
+
+            *Note: The oldest fiscal year in the horizon has no prior baseline year and is excluded from YoY return pairing.*
+            """)
+
+            if corr_val is not None:
+                m_c1, m_c2 = st.columns([1, 2])
+                m_c1.metric(
+                    label="Pearson Correlation (r)",
+                    value=f"{corr_val:+.3f}",
+                    help="Pearson correlation coefficient ranging from -1.0 (inverse) to +1.0 (positive)."
+                )
+
+                caution_text = ""
+                if n_obs < 4:
+                    caution_text = "\n\n⚠️ *Limited sample — interpret cautiously* ($n < 4$)."
+
+                m_c2.markdown(f"""
+                - **Paired Observations ($n$):** `{n_obs}`  
+                - **Observation Window:** {corr_pairs[0]['Fiscal Year']} to {corr_pairs[-1]['Fiscal Year']}{caution_text}
+                """)
+            else:
+                st.info(f"Insufficient annual historical periods to calculate correlation (minimum 3 required; currently {n_obs} available).")
+
+            st.warning("""
+            ⚠️ **Correlation does not imply causation.**  
+            This statistical metric is provided solely for academic exploratory analysis. Statistical correlation does not establish that MD&A sentiment causes or predicts stock-price movement, nor does it constitute an investment recommendation or financial advice.
+            """)
+
+            if corr_pairs:
+                st.markdown("**Paired Annual Observations:**")
+                df_corr = pd.DataFrame([
+                    {
+                        "Fiscal Year": cp["Fiscal Year"],
+                        "Period Evaluated": cp["Return Description"],
+                        "Annual Stock Return": f"{cp['Stock Return Pct']:+.2f}%",
+                        "MD&A P/N Ratio": f"{cp['P/N Ratio']:.2f}"
+                    }
+                    for cp in corr_pairs
+                ])
+                st.dataframe(df_corr, width="stretch", hide_index=True)
+
+        # Section: Consolidated Data Sources & Methodology (Requirement 6)
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("📖 Data Sources & Methodology", expanded=False):
+            st.markdown("""
+            ### 🏛️ 1. SEC EDGAR Data Source & Filing Retrieval
+            - **Primary Source**: U.S. Securities and Exchange Commission (SEC EDGAR) official submissions API (`https://data.sec.gov/submissions/`).
+            - **Filing Form**: Form 10-K (Annual Reports filed by public entities under Section 13 or 15(d) of the Securities Exchange Act of 1934).
+            - **Entity Lookup**: Official SEC Central Index Key (CIK) mapped directly from the company's exchange ticker symbol.
+            - **Fair Access Compliance**: Declarative User-Agent contact header, polite pacing, and request rate throttling (maximum 10 requests per second) adhering strictly to SEC Fair Access regulations.
+
+            ---
+            ### 📅 2. Fiscal Year & `reportDate` Alignment
+            - **Period End Alignment**: Each filing's financial statements are keyed to the official period-end date (`reportDate` / balance sheet date).
+            - **Multi-Year Comparative Reporting**: Financial statements are aligned chronologically from oldest to newest fiscal year.
+            - **Account Mapping**: Standard U.S. GAAP taxonomy concepts (Revenue, Net Income, Current Assets, Current Liabilities, Total Assets, Total Liabilities) are extracted directly from primary financial statements.
+
+            ---
+            ### 📈 3. Stock Price Methodology & Previous-Trading-Day Rule
+            - **Source**: Yahoo Finance via `yfinance`.
+            - **Price Metric**: Historical split-adjusted closing price (`Close`).
+            - **Alignment Rule**: Stock prices are matched to the exact fiscal year-end balance sheet date.
+            - **Non-Trading Day Rule**: When the balance sheet date falls on a weekend or market holiday, the system automatically selects the **most recent previous trading day**. Future trading dates are never used.
+
+            ---
+            ### 📝 4. Loughran-McDonald Financial Sentiment Scoring
+            - **Source**: University of Notre Dame Software Repository for Accounting and Finance (SRAF), developed by Tim Loughran and Bill McDonald.
+            - **Target Text**: Item 7 — *Management's Discussion and Analysis of Financial Condition and Results of Operations (MD&A)*.
+            - **Text Preprocessing**: Raw HTML/XBRL tags, tables, and scripts are stripped; punctuation and possessive suffixes (`'S`) are normalized; text is tokenized into uppercase alphabetic words without stemming.
+            - **Dictionary Categories**: 8 domain-specific categories (*Positive, Negative, Uncertainty, Litigious, Strong Modal, Weak Modal, Constraining, Complexity*).
+            - **Positive-to-Negative (P/N) Ratio**:
+              $$\\text{P/N Ratio} = \\frac{\\text{Positive Words}}{\\text{Negative Words}}$$
+              *(Protected against division-by-zero: if Negative = 0, returns Positive count if Positive > 0, else 1.0).*
+
+            ---
+            ### 🔢 5. Financial Ratio Formulas & Definitions
+            *Standard financial-analysis ratios calculated using U.S. GAAP financial-statement data.*
+
+            - **Current Ratio (Liquidity)**:
+              $$\\text{Current Ratio} = \\frac{\\text{Current Assets}}{\\text{Current Liabilities}}$$
+              *Evaluates short-term liquidity and ability to cover immediate liabilities.*
+            - **Debt-to-Assets Ratio (Solvency)**:
+              $$\\text{Debt-to-Assets} = \\frac{\\text{Total Liabilities}}{\\text{Total Assets}}$$
+              *Measures capital structure leverage and the proportion of assets financed by creditors.*
+            - **Total Asset Turnover (Efficiency)**:
+              $$\\text{Total Asset Turnover} = \\frac{\\text{Revenue}}{\\text{Average Total Assets}}$$
+              *Where Average Total Assets is calculated as:*
+              $$\\text{Average Total Assets} = \\frac{\\text{Beginning Total Assets} + \\text{Ending Total Assets}}{2}$$
+              *(Beginning assets are sourced from the comparative prior-year balance sheet).*
+            - **Net Profit Margin (Profitability)**:
+              $$\\text{Net Profit Margin} = \\frac{\\text{Net Income}}{\\text{Revenue}}$$
+              *Measures operational efficiency and bottom-line earnings generated per dollar of revenue.*
+            """)
 
     # --------------------------------------------------------------------------
     # TAB 2: FINANCIAL RATIOS
