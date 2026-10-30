@@ -181,6 +181,9 @@ if "custom_ticker" not in st.session_state:
 if "active_ticker" not in st.session_state:
     st.session_state.active_ticker = "AAPL"
 
+if "sidebar_ticker_input" not in st.session_state:
+    st.session_state.sidebar_ticker_input = "AAPL"
+
 if "selected_filing_count" not in st.session_state:
     st.session_state.selected_filing_count = 4
 
@@ -199,10 +202,14 @@ if selected_mode and selected_mode != st.session_state.company_mode:
     st.session_state.company_mode = selected_mode
     if selected_mode == "Apple (AAPL)":
         st.session_state.active_ticker = "AAPL"
+        st.session_state.sidebar_ticker_input = "AAPL"
     elif selected_mode == "Tesla (TSLA)":
         st.session_state.active_ticker = "TSLA"
+        st.session_state.sidebar_ticker_input = "TSLA"
     elif selected_mode == "Custom Ticker":
-        st.session_state.active_ticker = st.session_state.get("custom_ticker", "AAPL")
+        custom_val = st.session_state.get("custom_ticker", "AAPL")
+        st.session_state.active_ticker = custom_val
+        st.session_state.sidebar_ticker_input = custom_val
     st.rerun()
 
 
@@ -223,23 +230,27 @@ with st.sidebar:
     st.header("⚙️ Analysis Settings")
     st.markdown("Configure target public company and historical period horizon:")
 
-    # Keep sidebar ticker in sync with top company quick-switcher
+    # Ensure sidebar ticker widget state strictly reflects active selection
     if st.session_state.company_mode == "Apple (AAPL)":
-        sidebar_val = "AAPL"
+        st.session_state.sidebar_ticker_input = "AAPL"
+        st.session_state.active_ticker = "AAPL"
         is_custom = False
         ticker_help = "Selected via top quick-switcher (Apple Inc. — AAPL)."
     elif st.session_state.company_mode == "Tesla (TSLA)":
-        sidebar_val = "TSLA"
+        st.session_state.sidebar_ticker_input = "TSLA"
+        st.session_state.active_ticker = "TSLA"
         is_custom = False
         ticker_help = "Selected via top quick-switcher (Tesla, Inc. — TSLA)."
     else:
-        sidebar_val = st.session_state.get("custom_ticker", "AAPL")
+        # Custom Ticker mode: restore custom ticker if previous value was a fixed featured ticker
+        if st.session_state.get("sidebar_ticker_input") in ("AAPL", "TSLA") and "custom_ticker" in st.session_state:
+            st.session_state.sidebar_ticker_input = st.session_state.custom_ticker
+            st.session_state.active_ticker = st.session_state.custom_ticker
         is_custom = True
         ticker_help = "Enter any public company ticker symbol listed on a U.S. exchange (e.g., MSFT, NVDA, AMZN)."
 
     input_ticker = st.text_input(
         "Ticker Symbol:",
-        value=sidebar_val,
         max_chars=10,
         disabled=not is_custom,
         help=ticker_help,
@@ -250,7 +261,7 @@ with st.sidebar:
         st.session_state.custom_ticker = input_ticker
         st.session_state.active_ticker = input_ticker
     else:
-        st.session_state.active_ticker = sidebar_val
+        st.session_state.active_ticker = st.session_state.sidebar_ticker_input
 
     input_filing_count = st.number_input(
         "Number of Recent 10-K Filings:",
