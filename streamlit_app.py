@@ -165,14 +165,45 @@ retrieves historical stock prices, and generates a downloadable Excel analysis w
 
 
 # ==============================================================================
-# SESSION STATE INITIALIZATION
+# FEATURED COMPANY QUICK SWITCHER (EXECUTIVE DASHBOARD)
 # ==============================================================================
 
-if "analysis_results" not in st.session_state:
-    st.session_state.analysis_results = None
+# Initialize session state for company selection & multi-company analysis cache
+if "analysis_cache" not in st.session_state:
+    st.session_state.analysis_cache = {}
 
-if "last_ticker" not in st.session_state:
-    st.session_state.last_ticker = ""
+if "company_mode" not in st.session_state:
+    st.session_state.company_mode = "Apple (AAPL)"
+
+if "custom_ticker" not in st.session_state:
+    st.session_state.custom_ticker = "AAPL"
+
+if "active_ticker" not in st.session_state:
+    st.session_state.active_ticker = "AAPL"
+
+if "selected_filing_count" not in st.session_state:
+    st.session_state.selected_filing_count = 4
+
+st.markdown("##### 🏢 Featured Company Quick Switcher")
+company_options = ["Apple (AAPL)", "Tesla (TSLA)", "Custom Ticker"]
+
+selected_mode = st.pills(
+    "Select Featured Company:",
+    options=company_options,
+    default=st.session_state.company_mode,
+    key="company_pill_selector",
+    label_visibility="collapsed"
+)
+
+if selected_mode and selected_mode != st.session_state.company_mode:
+    st.session_state.company_mode = selected_mode
+    if selected_mode == "Apple (AAPL)":
+        st.session_state.active_ticker = "AAPL"
+    elif selected_mode == "Tesla (TSLA)":
+        st.session_state.active_ticker = "TSLA"
+    elif selected_mode == "Custom Ticker":
+        st.session_state.active_ticker = st.session_state.get("custom_ticker", "AAPL")
+    st.rerun()
 
 
 # ==============================================================================
@@ -192,21 +223,45 @@ with st.sidebar:
     st.header("⚙️ Analysis Settings")
     st.markdown("Configure target public company and historical period horizon:")
 
+    # Keep sidebar ticker in sync with top company quick-switcher
+    if st.session_state.company_mode == "Apple (AAPL)":
+        sidebar_val = "AAPL"
+        is_custom = False
+        ticker_help = "Selected via top quick-switcher (Apple Inc. — AAPL)."
+    elif st.session_state.company_mode == "Tesla (TSLA)":
+        sidebar_val = "TSLA"
+        is_custom = False
+        ticker_help = "Selected via top quick-switcher (Tesla, Inc. — TSLA)."
+    else:
+        sidebar_val = st.session_state.get("custom_ticker", "AAPL")
+        is_custom = True
+        ticker_help = "Enter any public company ticker symbol listed on a U.S. exchange (e.g., MSFT, NVDA, AMZN)."
+
     input_ticker = st.text_input(
         "Ticker Symbol:",
-        value=st.session_state.last_ticker or "AAPL",
+        value=sidebar_val,
         max_chars=10,
-        help="Enter a public company ticker symbol listed on a U.S. exchange (e.g., AAPL, MSFT, NVDA)."
+        disabled=not is_custom,
+        help=ticker_help,
+        key="sidebar_ticker_input"
     ).strip().upper()
+
+    if is_custom:
+        st.session_state.custom_ticker = input_ticker
+        st.session_state.active_ticker = input_ticker
+    else:
+        st.session_state.active_ticker = sidebar_val
 
     input_filing_count = st.number_input(
         "Number of Recent 10-K Filings:",
         min_value=1,
         max_value=10,
-        value=4,
+        value=int(st.session_state.get("selected_filing_count", 4)),
         step=1,
-        help="Select between 1 and 10 fiscal years (default is 4; final run is 10)."
+        help="Select between 1 and 10 fiscal years (default is 4; final assignment uses 10).",
+        key="sidebar_filing_count_input"
     )
+    st.session_state.selected_filing_count = input_filing_count
 
     run_btn = st.button("🚀 Run Analysis", type="primary", width="stretch")
 
@@ -296,14 +351,12 @@ if not has_dictionary:
 
 if run_btn:
     # Input validation
-    clean_ticker = input_ticker.strip().upper()
+    clean_ticker = st.session_state.active_ticker.strip().upper()
     if not clean_ticker or not re.match(r"^[A-Z0-9\.\-]+$", clean_ticker):
         st.error("❌ Please enter a valid stock ticker symbol (letters, numbers, dots, or hyphens only).")
     elif not has_dictionary:
         st.error("❌ Cannot start analysis: The Loughran-McDonald sentiment dictionary is required. Please upload the dictionary file above first.")
     else:
-        st.session_state.last_ticker = clean_ticker
-
         # Progress tracking status container
         status_box = st.status(f"Starting SEC 10-K Analysis for **{clean_ticker}** ({input_filing_count} filings)...", expanded=True)
         progress_bar = st.progress(0.0)
@@ -315,35 +368,42 @@ if run_btn:
 
         try:
             # Execute backend workflow without duplicating logic
-            results = run_analysis_workflow(
+            workflow_results = run_analysis_workflow(
                 ticker=clean_ticker,
                 filing_count=input_filing_count,
                 progress_callback=on_progress,
                 is_cli=False
             )
 
-            if results.get("success"):
+            if workflow_results.get("success"):
                 progress_bar.progress(1.0)
                 status_box.update(label=f"✅ Analysis for {clean_ticker} complete!", state="complete", expanded=False)
-                st.session_state.analysis_results = results
+                # Store in multi-company cache by unique key (ticker, filing_count) and by ticker (Requirement 4)
+                cache_key = (clean_ticker, input_filing_count)
+                st.session_state.analysis_cache[cache_key] = workflow_results
+                st.session_state.analysis_cache[clean_ticker] = workflow_results
             else:
                 progress_bar.empty()
                 status_box.update(label=f"❌ Analysis failed for {clean_ticker}", state="error", expanded=True)
-                st.error(f"**Error:** {results.get('error')}")
-                st.session_state.analysis_results = None
+                st.error(f"**Error:** {workflow_results.get('error')}")
 
         except Exception as ex:
             progress_bar.empty()
             status_box.update(label="❌ Unexpected Error", state="error", expanded=True)
             st.error(f"An unexpected error occurred during execution: {ex}")
-            st.session_state.analysis_results = None
 
 
 # ==============================================================================
 # DISPLAY RESULTS DASHBOARD
 # ==============================================================================
 
-results = st.session_state.analysis_results
+active_ticker = st.session_state.get("active_ticker", "AAPL").strip().upper()
+target_filing_count = int(st.session_state.get("selected_filing_count", 4))
+
+# Lookup in cache: exact (ticker, filing_count) first, then fallback to most recent run for ticker
+results = st.session_state.analysis_cache.get((active_ticker, target_filing_count))
+if not results and active_ticker in st.session_state.analysis_cache:
+    results = st.session_state.analysis_cache[active_ticker]
 
 if results:
     company_name = results["company_name"]
@@ -358,7 +418,7 @@ if results:
     available_cats = results["available_categories"]
     output_filepath = results["output_filepath"]
 
-    # Polished Executive Company Header (Requirement 1)
+    # Polished Executive Company Header (Requirement 1 & 6)
     oldest_yr = analysis_data[0]["year"]
     latest_yr = analysis_data[-1]["year"]
     fiscal_horizon = f"FY {oldest_yr} – FY {latest_yr}"
@@ -373,12 +433,12 @@ if results:
                     🏢 {company_name} <span style="font-size: 1.2rem; color: #4A5568; font-weight: 500;">({ticker})</span>
                 </div>
                 <div style="font-size: 0.92rem; color: #4A5568; margin-top: 0.35rem; line-height: 1.4;">
-                    SEC Central Index Key: <b>CIK {cik_str}</b> &nbsp;•&nbsp; Reporting Horizon: <b>{fiscal_horizon}</b> &nbsp;•&nbsp; Master Workbook: <b>{Path(output_filepath).name}</b>
+                    SEC Central Index Key: <b>CIK {cik_str}</b> &nbsp;•&nbsp; Reporting Period: <b>{fiscal_horizon}</b> &nbsp;•&nbsp; Master Workbook: <b>{Path(output_filepath).name}</b>
                 </div>
             </div>
             <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                 <span class="company-badge">📋 {reporting_scope}</span>
-                <span class="company-badge-secondary">📅 {num_years} Annual Filings</span>
+                <span class="company-badge-secondary">📅 FY {oldest_yr} – FY {latest_yr}</span>
             </div>
         </div>
     </div>
@@ -818,7 +878,7 @@ if results:
         **About the Sentiment Metrics**:
         - **Dictionary**: Loughran-McDonald Master Financial Sentiment Dictionary ({dict_word_count:,d} words).
         - **P/N Ratio**: `Positive Words / Negative Words`.
-        - **Interpretation**: Values > 1.0 indicate predominantly optimistic tone; values < 1.0 reflect cautious tone typical of SEC risk disclosures.
+        - **Interpretation**: P/N > 1 means positive Loughran-McDonald word matches exceeded negative word matches. P/N < 1 means negative word matches exceeded positive word matches.
         """)
 
     # --------------------------------------------------------------------------
@@ -936,5 +996,12 @@ if results:
             st.error(f"Workbook file '{output_filepath}' not found on disk.")
 
 else:
-    # Initial state before running analysis
-    st.info("👈 Enter a ticker symbol in the sidebar and click **Run Analysis** to retrieve SEC filings and generate reports.")
+    # Friendly status notice when selected company has not been analyzed yet (Requirement 4)
+    if active_ticker == "AAPL":
+        company_label = "Apple Inc. (AAPL)"
+    elif active_ticker == "TSLA":
+        company_label = "Tesla, Inc. (TSLA)"
+    else:
+        company_label = f"Company '{active_ticker}'"
+
+    st.info(f"💡 **{company_label}** has not been analyzed in this session yet. Click **🚀 Run Analysis** in the sidebar to generate the report.")
