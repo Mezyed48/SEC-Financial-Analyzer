@@ -110,12 +110,28 @@ def get_sec_credentials():
     try:
         import streamlit as st
         if hasattr(st, "secrets"):
-            if not org and "SEC_USER_ORGANIZATION" in st.secrets:
-                org = st.secrets["SEC_USER_ORGANIZATION"]
-            if not name and "SEC_USER_NAME" in st.secrets:
-                name = st.secrets["SEC_USER_NAME"]
-            if not email and "SEC_USER_EMAIL" in st.secrets:
-                email = st.secrets["SEC_USER_EMAIL"]
+            def _get_sec_val(key):
+                try:
+                    if key in st.secrets:
+                        return st.secrets[key]
+                    if hasattr(st.secrets, "get") and isinstance(st.secrets.get("sec"), dict):
+                        return st.secrets["sec"].get(key)
+                except Exception:
+                    pass
+                return None
+
+            if not org or org.strip().lower() in _SEC_PLACEHOLDER_VALUES:
+                val = _get_sec_val("SEC_USER_ORGANIZATION")
+                if val:
+                    org = val
+            if not name or name.strip().lower() in _SEC_PLACEHOLDER_VALUES:
+                val = _get_sec_val("SEC_USER_NAME")
+                if val:
+                    name = val
+            if not email or email.strip().lower() in _SEC_PLACEHOLDER_VALUES:
+                val = _get_sec_val("SEC_USER_EMAIL")
+                if val:
+                    email = val
     except Exception:
         pass
 
@@ -139,13 +155,15 @@ def get_sec_credentials():
             f"Per SEC Fair Access policy, automated requests must declare a verified contact header.\n"
             f"Generic placeholder or fake contact values are not permitted.\n\n"
             f"To configure your contact details:\n"
-            f"  1. Copy '.env.example' to '.env' in your project root:\n"
-            f"     cp .env.example .env\n"
-            f"  2. Open '.env' and enter your real contact details:\n"
-            f"     SEC_USER_NAME=Your Name\n"
-            f"     SEC_USER_ORGANIZATION=Your University or Organization\n"
-            f"     SEC_USER_EMAIL=your_email@example.com\n\n"
-            f"  3. Save the file and rerun the application. ('.env' is excluded from Git to protect your privacy)."
+            f"  • Local CLI (.env): Copy '.env.example' to '.env' and enter your real details:\n"
+            f"      SEC_USER_NAME=Your Name\n"
+            f"      SEC_USER_ORGANIZATION=Your University or Organization\n"
+            f"      SEC_USER_EMAIL=your_email@example.com\n\n"
+            f"  • Streamlit Cloud (Secrets): In App Settings → Secrets, configure:\n"
+            f"      SEC_USER_ORGANIZATION = \"Your University or Organization\"\n"
+            f"      SEC_USER_NAME = \"Your Name\"\n"
+            f"      SEC_USER_EMAIL = \"your_email@example.com\"\n\n"
+            f"Save the configuration and rerun the application."
         )
         return None, error_msg
 
@@ -1858,7 +1876,7 @@ def setup_dictionaries_directory():
 
 def find_dictionary_file(dictionaries_dir):
     """
-    Search dictionaries_dir for a Loughran-McDonald dictionary file (.csv, .xlsx, .xls).
+    Search dictionaries_dir for a Loughran-McDonald dictionary file (.csv or .xlsx).
 
     Args:
         dictionaries_dir (str): Path to dictionaries folder.
@@ -1869,7 +1887,7 @@ def find_dictionary_file(dictionaries_dir):
     if not os.path.isdir(dictionaries_dir):
         return None, None
 
-    valid_exts = (".csv", ".xlsx", ".xls")
+    valid_exts = (".csv", ".xlsx")
     candidates = [
         f for f in os.listdir(dictionaries_dir)
         if any(f.lower().endswith(ext) for ext in valid_exts) and not f.startswith("~$")
@@ -2037,7 +2055,7 @@ def _load_csv_dictionary(dict_path, dict_filename):
 
 def _load_excel_dictionary(dict_path, dict_filename):
     """
-    Load Loughran-McDonald dictionary from an Excel file (.xlsx or .xls).
+    Load Loughran-McDonald dictionary from an Excel file (.xlsx) using openpyxl.
     """
     try:
         wb = openpyxl.load_workbook(dict_path, read_only=True, data_only=True)
@@ -2064,7 +2082,7 @@ def _load_excel_dictionary(dict_path, dict_filename):
 
 def load_loughran_mcdonald_dictionary(dict_path):
     """
-    Load and index the Loughran-McDonald sentiment dictionary from CSV or Excel.
+    Load and index the Loughran-McDonald sentiment dictionary from CSV (.csv) or Excel (.xlsx).
 
     Args:
         dict_path (str): Full path to dictionary file.
@@ -2077,8 +2095,11 @@ def load_loughran_mcdonald_dictionary(dict_path):
 
     if file_ext == ".csv":
         return _load_csv_dictionary(dict_path, dict_filename)
-    elif file_ext in (".xlsx", ".xls"):
+    elif file_ext == ".xlsx":
         return _load_excel_dictionary(dict_path, dict_filename)
+    elif file_ext == ".xls":
+        print(f"\nError: Legacy Excel format '{file_ext}' is not supported by openpyxl. Please save or convert your dictionary as .xlsx or .csv.")
+        return None
     else:
         print(f"\nError: Unsupported dictionary format '{file_ext}'. Please provide a .csv or .xlsx file.")
         return None

@@ -16,6 +16,7 @@ Runs on:
   streamlit run streamlit_app.py
 """
 
+import os
 from pathlib import Path
 import re
 import pandas as pd
@@ -23,8 +24,14 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
-# Import the verified backend pipeline from main.py without duplicating accounting logic
-from main import run_analysis_workflow, PROJECT_ROOT
+# Import the verified backend pipeline and dictionary functions from main.py
+from main import (
+    run_analysis_workflow,
+    PROJECT_ROOT,
+    setup_dictionaries_directory,
+    find_dictionary_file,
+    load_loughran_mcdonald_dictionary
+)
 
 
 # ==============================================================================
@@ -122,6 +129,15 @@ if "last_ticker" not in st.session_state:
 
 
 # ==============================================================================
+# LOUGHRAN-MCDONALD DICTIONARY STATUS & DETECTION
+# ==============================================================================
+
+dict_dir = setup_dictionaries_directory()
+dict_filepath, dict_filename = find_dictionary_file(dict_dir)
+has_dictionary = dict_filepath is not None and os.path.isfile(dict_filepath)
+
+
+# ==============================================================================
 # SIDEBAR / USER INPUT CONTROLS
 # ==============================================================================
 
@@ -148,8 +164,83 @@ with st.sidebar:
     run_btn = st.button("🚀 Run Analysis", type="primary", width="stretch")
 
     st.markdown("---")
+    st.subheader("📚 Sentiment Dictionary")
+    if has_dictionary:
+        st.success(f"**Loaded:** `{dict_filename}`")
+        with st.expander("Replace / Upload New Dictionary", expanded=False):
+            st.caption("Upload an updated Loughran-McDonald dictionary (.csv / .xlsx):")
+            uploaded_sidebar = st.file_uploader(
+                "Upload replacement dictionary",
+                type=["csv", "xlsx"],
+                key="sidebar_dict_uploader",
+                label_visibility="collapsed"
+            )
+            if uploaded_sidebar is not None:
+                save_path = os.path.join(dict_dir, uploaded_sidebar.name)
+                with open(save_path, "wb") as f_out:
+                    f_out.write(uploaded_sidebar.getbuffer())
+                check = load_loughran_mcdonald_dictionary(save_path)
+                if check and check.get("total_words", 0) > 0:
+                    st.success(f"Loaded {uploaded_sidebar.name} ({check['total_words']:,d} words)!")
+                    st.rerun()
+                else:
+                    if os.path.exists(save_path):
+                        os.remove(save_path)
+                    st.error("Invalid dictionary file format. Please upload a .csv or .xlsx file.")
+    else:
+        st.warning("⚠️ **Dictionary Missing**\n\nUpload required for Step 7 sentiment analysis.")
+
+    st.markdown("---")
     st.caption("🔒 **SEC Fair Access Compliant**: Requests are throttled and use declarative User-Agent contact credentials.")
     st.caption("📚 **Accounting Standards**: Follows U.S. GAAP ratios and Loughran-McDonald Financial Sentiment Dictionary.")
+
+
+# ==============================================================================
+# DICTIONARY UPLOAD INTERFACE (FOR FRESH DEPLOYMENTS)
+# ==============================================================================
+
+if not has_dictionary:
+    st.warning("### ⚠️ Loughran-McDonald Sentiment Dictionary Required")
+    st.markdown("""
+    To perform **Step 7 (MD&A Sentiment Analysis)**, this application requires the official **Loughran-McDonald Financial Sentiment Dictionary**.
+
+    > **Notice on Copyright & Licensing:** Per academic guidelines, the proprietary dictionary file created by Tim Loughran and Bill McDonald is **not distributed** in the public GitHub repository.
+
+    **How to obtain the official dictionary:**
+    1. Visit the University of Notre Dame [Software Repository for Accounting and Finance (SRAF)](https://sraf.nd.edu/loughranmcdonald-master-dictionary/).
+    2. Download the official **Loughran-McDonald Master Dictionary** (`.csv` or `.xlsx`).
+    3. Upload the downloaded file below to activate financial sentiment analysis for your session.
+    """)
+
+    uploaded_main_dict = st.file_uploader(
+        "Upload Loughran-McDonald Master Dictionary (.csv or .xlsx):",
+        type=["csv", "xlsx"],
+        key="main_dict_uploader",
+        help="Upload the official Loughran-McDonald Master Dictionary obtained from Notre Dame SRAF."
+    )
+
+    if uploaded_main_dict is not None:
+        save_path = os.path.join(dict_dir, uploaded_main_dict.name)
+        try:
+            with open(save_path, "wb") as f_out:
+                f_out.write(uploaded_main_dict.getbuffer())
+
+            # Validate the uploaded file using the existing dictionary-loading function
+            check = load_loughran_mcdonald_dictionary(save_path)
+            if check and check.get("total_words", 0) > 0:
+                st.success(
+                    f"✅ **Dictionary Loaded Successfully!** Indexed {check['total_words']:,d} words "
+                    f"across {len(check['categories'])} sentiment categories ({', '.join(check['categories'])})."
+                )
+                st.rerun()
+            else:
+                if os.path.exists(save_path):
+                    os.remove(save_path)
+                st.error("❌ The uploaded file is not a valid Loughran-McDonald dictionary. Please ensure you upload the official CSV or Excel (.xlsx) file from Notre Dame SRAF.")
+        except Exception as upload_err:
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            st.error(f"❌ Error saving uploaded dictionary: {upload_err}")
 
 
 # ==============================================================================
@@ -161,6 +252,8 @@ if run_btn:
     clean_ticker = input_ticker.strip().upper()
     if not clean_ticker or not re.match(r"^[A-Z0-9\.\-]+$", clean_ticker):
         st.error("❌ Please enter a valid stock ticker symbol (letters, numbers, dots, or hyphens only).")
+    elif not has_dictionary:
+        st.error("❌ Cannot start analysis: The Loughran-McDonald sentiment dictionary is required. Please upload the dictionary file above first.")
     else:
         st.session_state.last_ticker = clean_ticker
 
