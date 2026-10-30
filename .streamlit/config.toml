@@ -1,3 +1,6 @@
 [theme]
-# The custom CSS cards and headings are designed for a light background
-base = "light"
+base = "dark"
+primaryColor = "#4C8DFF"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#171B24"
+textColor = "#F5F7FA"

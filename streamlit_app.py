@@ -37,7 +37,7 @@ from main import (
 
 
 # ==============================================================================
-# PAGE CONFIGURATION & STYLES
+# PAGE CONFIGURATION
 # ==============================================================================
 
 st.set_page_config(
@@ -47,112 +47,345 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom styling for executive KPI cards and headers (Professional Light Theme)
-st.markdown("""
+
+# ==============================================================================
+# SESSION STATE & THEME CONFIGURATION
+# ==============================================================================
+
+if "theme_mode" not in st.session_state:
+    st.session_state.theme_mode = "🌙 Dark"
+
+if "analysis_cache" not in st.session_state:
+    st.session_state.analysis_cache = {}
+
+if "company_mode" not in st.session_state:
+    st.session_state.company_mode = "Apple (AAPL)"
+
+if "custom_ticker" not in st.session_state:
+    st.session_state.custom_ticker = "AAPL"
+
+if "active_ticker" not in st.session_state:
+    st.session_state.active_ticker = "AAPL"
+
+if "sidebar_ticker_input" not in st.session_state:
+    st.session_state.sidebar_ticker_input = "AAPL"
+
+if "selected_filing_count" not in st.session_state:
+    st.session_state.selected_filing_count = 4
+
+is_dark = (st.session_state.theme_mode == "🌙 Dark")
+
+if is_dark:
+    THEME = {
+        "is_dark": True,
+        "name": "dark",
+        "bg_color": "#0E1117",
+        "sidebar_bg": "#171B24",
+        "card_bg": "#161B22",
+        "card_secondary_bg": "#202632",
+        "header_card_bg": "#1C212B",
+        "text_primary": "#F5F7FA",
+        "text_secondary": "#AAB2C0",
+        "text_muted": "#718096",
+        "accent_blue": "#4C8DFF",
+        "accent_blue_hover": "#6BA4FF",
+        "border_color": "#2A3342",
+        "positive": "#27C499",
+        "negative": "#FF5C5C",
+        "warning": "#F2C94C",
+        "badge_aapl_bg": "rgba(76, 141, 255, 0.15)",
+        "badge_aapl_text": "#7CB0FF",
+        "badge_aapl_border": "#2A3342",
+        "badge_sec_bg": "#202632",
+        "badge_sec_text": "#AAB2C0",
+        "badge_sec_border": "#2A3342",
+        "intro_bg": "#161B22",
+        "intro_border": "#4C8DFF",
+        "intro_text": "#E2E8F0",
+        "metric_cat_color": "#AAB2C0",
+        "metric_name_color": "#F5F7FA",
+        "metric_val_color": "#4C8DFF",
+        "aapl_color": "#4C8DFF",
+        "tsla_color": "#FF7A59",
+        "plotly_template": "plotly_dark",
+        "chart_paper_bg": "#0E1117",
+        "chart_plot_bg": "#161B22",
+        "chart_font_color": "#F5F7FA",
+        "chart_grid_color": "#2A3342",
+        "chart_zeroline_color": "#3B4758",
+        "chart_neutral_line": "#718096",
+        "chart_primary_line": "#4C8DFF",
+        "chart_secondary_line": "#FF7A59",
+        "chart_positive_color": "#27C499",
+        "chart_negative_color": "#FF5C5C",
+    }
+else:
+    THEME = {
+        "is_dark": False,
+        "name": "light",
+        "bg_color": "#FFFFFF",
+        "sidebar_bg": "#F8FAFC",
+        "card_bg": "#FFFFFF",
+        "card_secondary_bg": "#EDF2F7",
+        "header_card_bg": "#F8FAFC",
+        "text_primary": "#2D3748",
+        "text_secondary": "#4A5568",
+        "text_muted": "#718096",
+        "accent_blue": "#1F497D",
+        "accent_blue_hover": "#2B6CB0",
+        "border_color": "#E2E8F0",
+        "positive": "#2F855A",
+        "negative": "#C53030",
+        "warning": "#D69E2E",
+        "badge_aapl_bg": "#EBF8FF",
+        "badge_aapl_text": "#2B6CB0",
+        "badge_aapl_border": "#BEE3F8",
+        "badge_sec_bg": "#EDF2F7",
+        "badge_sec_text": "#4A5568",
+        "badge_sec_border": "#E2E8F0",
+        "intro_bg": "#F7FAFC",
+        "intro_border": "#1F497D",
+        "intro_text": "#2D3748",
+        "metric_cat_color": "#718096",
+        "metric_name_color": "#2D3748",
+        "metric_val_color": "#1F497D",
+        "aapl_color": "#1F497D",
+        "tsla_color": "#E4572E",
+        "plotly_template": "plotly_white",
+        "chart_paper_bg": "#FFFFFF",
+        "chart_plot_bg": "#FFFFFF",
+        "chart_font_color": "#2D3748",
+        "chart_grid_color": "#EDF2F7",
+        "chart_zeroline_color": "#CBD5E0",
+        "chart_neutral_line": "#A0AEC0",
+        "chart_primary_line": "#1F497D",
+        "chart_secondary_line": "#E4572E",
+        "chart_positive_color": "#2B6CB0",
+        "chart_negative_color": "#C53030",
+    }
+
+
+# ==============================================================================
+# DYNAMIC THEME STYLES (DARK / LIGHT COMPATIBLE)
+# ==============================================================================
+
+st.markdown(f"""
 <style>
-    .main-title {
+    /* Global Root Variables & Theme Colors */
+    :root {{
+        --background-color: {THEME['bg_color']};
+        --secondary-background-color: {THEME['card_bg']};
+        --text-color: {THEME['text_primary']};
+        --primary-color: {THEME['accent_blue']};
+    }}
+
+    /* Main Application Body */
+    .stApp {{
+        background-color: {THEME['bg_color']};
+        color: {THEME['text_primary']};
+    }}
+    [data-testid="stAppViewContainer"] {{
+        background-color: {THEME['bg_color']};
+    }}
+    [data-testid="stHeader"] {{
+        background-color: {THEME['bg_color']};
+    }}
+
+    /* Sidebar Styling */
+    section[data-testid="stSidebar"] {{
+        background-color: {THEME['sidebar_bg']} !important;
+        border-right: 1px solid {THEME['border_color']} !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{
+        color: {THEME['text_primary']};
+    }}
+    section[data-testid="stSidebar"] h1, 
+    section[data-testid="stSidebar"] h2, 
+    section[data-testid="stSidebar"] h3 {{
+        color: {THEME['accent_blue']} !important;
+    }}
+
+    /* Titles and Subtitles */
+    .main-title {{
         font-size: 2.1rem;
         font-weight: 700;
-        color: #1F497D;
+        color: {THEME['accent_blue']};
         margin-bottom: 0.2rem;
-    }
-    .sub-title {
+    }}
+    .sub-title {{
         font-size: 1.05rem;
         font-weight: 400;
-        color: #4A5568;
+        color: {THEME['text_secondary']};
         margin-bottom: 0.8rem;
-    }
-    .intro-box {
-        background-color: #F7FAFC;
-        border-left: 4px solid #1F497D;
+    }}
+    h1, h2, h3, h4, h5, h6 {{
+        color: {THEME['accent_blue']} !important;
+    }}
+
+    /* Intro Box */
+    .intro-box {{
+        background-color: {THEME['intro_bg']};
+        border: 1px solid {THEME['border_color']};
+        border-left: 4px solid {THEME['intro_border']};
         padding: 0.85rem 1.2rem;
         border-radius: 6px;
         margin-bottom: 1.25rem;
         font-size: 0.93rem;
-        color: #2D3748;
+        color: {THEME['intro_text']};
         line-height: 1.5;
-    }
-    .company-header-card {
-        background-color: #F8FAFC;
-        border: 1px solid #E2E8F0;
+    }}
+
+    /* Company Header Card */
+    .company-header-card {{
+        background-color: {THEME['header_card_bg']};
+        border: 1px solid {THEME['border_color']};
         border-radius: 10px;
         padding: 1.25rem 1.5rem;
         margin-bottom: 1.25rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-    }
-    .company-badge {
-        background-color: #EBF8FF;
-        color: #2B6CB0;
-        border: 1px solid #BEE3F8;
+        box-shadow: 0 1px 3px rgba(0,0,0,{"0.2" if is_dark else "0.03"});
+    }}
+
+    /* Badges */
+    .company-badge {{
+        background-color: {THEME['badge_aapl_bg']};
+        color: {THEME['badge_aapl_text']};
+        border: 1px solid {THEME['badge_aapl_border']};
         padding: 0.35rem 0.85rem;
         border-radius: 20px;
         font-size: 0.85rem;
         font-weight: 600;
         display: inline-block;
-    }
-    .company-badge-secondary {
-        background-color: #EDF2F7;
-        color: #4A5568;
-        border: 1px solid #E2E8F0;
+    }}
+    .company-badge-secondary {{
+        background-color: {THEME['badge_sec_bg']};
+        color: {THEME['badge_sec_text']};
+        border: 1px solid {THEME['badge_sec_border']};
         padding: 0.35rem 0.85rem;
         border-radius: 20px;
         font-size: 0.85rem;
         font-weight: 600;
         display: inline-block;
-    }
-    .metric-card {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0;
+    }}
+
+    /* Metric Cards */
+    .metric-card {{
+        background-color: {THEME['card_bg']};
+        border: 1px solid {THEME['border_color']};
         border-radius: 8px;
         padding: 0.9rem 0.75rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        box-shadow: 0 1px 3px rgba(0,0,0,{"0.25" if is_dark else "0.04"});
         text-align: center;
         height: 100%;
         display: flex;
         flex-direction: column;
         justify-content: center;
-    }
-    .metric-category {
+    }}
+    .metric-category {{
         font-size: 0.72rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        color: #718096;
+        color: {THEME['metric_cat_color']};
         margin-bottom: 0.2rem;
-    }
-    .metric-name {
+    }}
+    .metric-name {{
         font-size: 0.88rem;
         font-weight: 600;
-        color: #2D3748;
+        color: {THEME['metric_name_color']};
         margin-bottom: 0.35rem;
-    }
-    .metric-val {
+    }}
+    .metric-val {{
         font-size: 1.55rem;
         font-weight: 700;
-        color: #1F497D;
+        color: {THEME['metric_val_color']};
         line-height: 1.2;
-    }
-    .metric-sub {
+    }}
+    .metric-sub {{
         font-size: 0.74rem;
-        color: #718096;
+        color: {THEME['text_muted']};
         margin-top: 0.3rem;
         line-height: 1.2;
-    }
-    .metric-sub.positive {
-        color: #2F855A;
+    }}
+    .metric-sub.positive {{
+        color: {THEME['positive']};
         font-weight: 600;
-    }
-    .metric-sub.negative {
-        color: #C53030;
+    }}
+    .metric-sub.negative {{
+        color: {THEME['negative']};
         font-weight: 600;
-    }
-    .metric-sub-neutral {
+    }}
+    .metric-sub-neutral {{
         font-size: 0.74rem;
-        color: #4A5568;
+        color: {THEME['text_secondary']};
         margin-top: 0.3rem;
         line-height: 1.2;
         font-weight: 500;
-    }
+    }}
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {{
+        border-bottom: 1px solid {THEME['border_color']};
+        gap: 0.5rem;
+    }}
+    .stTabs [data-baseweb="tab"] {{
+        color: {THEME['text_secondary']} !important;
+        font-weight: 500;
+        border-radius: 4px 4px 0 0;
+    }}
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {{
+        color: {THEME['accent_blue']} !important;
+        font-weight: 700;
+    }}
+    .stTabs [data-baseweb="tab-highlight"] {{
+        background-color: {THEME['accent_blue']} !important;
+    }}
+
+    /* Expanders */
+    div[data-testid="stExpander"] {{
+        background-color: {THEME['card_bg']};
+        border: 1px solid {THEME['border_color']};
+        border-radius: 8px;
+    }}
+    div[data-testid="stExpander"] summary {{
+        color: {THEME['text_primary']} !important;
+        font-weight: 600;
+    }}
+
+    /* Dataframe Container */
+    [data-testid="stDataFrame"] {{
+        border: 1px solid {THEME['border_color']};
+        border-radius: 8px;
+        background-color: {THEME['card_bg']};
+    }}
+
+    /* Captions */
+    [data-testid="stCaptionContainer"] p, .stCaption {{
+        color: {THEME['text_secondary']} !important;
+    }}
+
+    /* Info / Warning / Success Alert Boxes */
+    div[data-testid="stAlert"] {{
+        border-radius: 8px;
+        border: 1px solid {THEME['border_color']};
+    }}
+
+    /* Form Controls & Inputs */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="base-input"],
+    div[data-baseweb="input"] {{
+        background-color: {THEME['card_secondary_bg']} !important;
+        border-color: {THEME['border_color']} !important;
+        color: {THEME['text_primary']} !important;
+    }}
+    div[data-baseweb="select"] span {{
+        color: {THEME['text_primary']} !important;
+    }}
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stTextInput"] input {{
+        background-color: {THEME['card_secondary_bg']} !important;
+        color: {THEME['text_primary']} !important;
+        border-color: {THEME['border_color']} !important;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -295,10 +528,141 @@ def get_cached_result(ticker, filing_count):
 
 
 # ==============================================================================
+# HELPER: UNIFIED PLOTLY CHART THEME
+# ==============================================================================
+
+def apply_chart_theme(
+    fig,
+    title="",
+    xaxis_title="",
+    yaxis_title="",
+    yaxis2_title=None,
+    height=380,
+    barmode=None,
+    show_legend=True,
+    legend_top=True,
+    margin=None,
+    hovermode=None,
+    tickprefix=None,
+    ticksuffix=None,
+    tickformat=None
+):
+    """
+    Uniformly apply current THEME (Dark or Light) to a Plotly figure.
+    """
+    layout_dict = {
+        "template": THEME["plotly_template"],
+        "paper_bgcolor": THEME["chart_paper_bg"],
+        "plot_bgcolor": THEME["chart_plot_bg"],
+        "height": height,
+        "font": dict(color=THEME["chart_font_color"]),
+        "hoverlabel": dict(
+            bgcolor=THEME["card_bg"],
+            font_color=THEME["text_primary"],
+            bordercolor=THEME["border_color"]
+        )
+    }
+
+    if title:
+        layout_dict["title"] = dict(
+            text=f"<b>{title}</b>",
+            font=dict(size=15, color=THEME["text_primary"] if is_dark else "#1F497D")
+        )
+
+    if barmode:
+        layout_dict["barmode"] = barmode
+
+    if margin:
+        layout_dict["margin"] = margin
+
+    if hovermode:
+        layout_dict["hovermode"] = hovermode
+
+    if show_legend:
+        if legend_top:
+            layout_dict["legend"] = dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(color=THEME["chart_font_color"])
+            )
+        else:
+            layout_dict["legend"] = dict(
+                font=dict(color=THEME["chart_font_color"])
+            )
+    else:
+        layout_dict["showlegend"] = False
+
+    fig.update_layout(**layout_dict)
+
+    # Style X-axis
+    fig.update_xaxes(
+        title_text=xaxis_title,
+        showgrid=True,
+        gridcolor=THEME["chart_grid_color"],
+        zeroline=False,
+        title_font=dict(color=THEME["text_secondary"]),
+        tickfont=dict(color=THEME["text_secondary"])
+    )
+
+    # Style primary Y-axis
+    y_kwargs = {
+        "title_text": yaxis_title,
+        "showgrid": True,
+        "gridcolor": THEME["chart_grid_color"],
+        "zeroline": True,
+        "zerolinecolor": THEME["chart_zeroline_color"],
+        "title_font": dict(color=THEME["text_secondary"]),
+        "tickfont": dict(color=THEME["text_secondary"]),
+    }
+    if tickprefix:
+        y_kwargs["tickprefix"] = tickprefix
+    if ticksuffix:
+        y_kwargs["ticksuffix"] = ticksuffix
+    if tickformat:
+        y_kwargs["tickformat"] = tickformat
+    if yaxis2_title:
+        y_kwargs["secondary_y"] = False
+
+    fig.update_yaxes(**y_kwargs)
+
+    # Style secondary Y-axis if present
+    if yaxis2_title:
+        fig.update_yaxes(
+            title_text=yaxis2_title,
+            showgrid=False,
+            title_font=dict(color=THEME["text_secondary"]),
+            tickfont=dict(color=THEME["text_secondary"]),
+            secondary_y=True
+        )
+
+    return fig
+
+
+# ==============================================================================
 # SIDEBAR / USER INPUT CONTROLS
 # ==============================================================================
 
 with st.sidebar:
+    # --------------------------------------------------------------------------
+    # THEME SELECTOR (PERSISTENT VIA st.session_state)
+    # --------------------------------------------------------------------------
+    st.subheader("🎨 Appearance")
+    theme_options = ["🌙 Dark", "☀️ Light"]
+    selected_theme = st.pills(
+        "Theme:",
+        options=theme_options,
+        default=st.session_state.theme_mode,
+        key="theme_mode_selector"
+    )
+
+    if selected_theme and selected_theme != st.session_state.theme_mode:
+        st.session_state.theme_mode = selected_theme
+        st.rerun()
+
+    st.markdown("---")
     st.header("⚙️ Analysis Settings")
     st.markdown("Configure target company and historical horizon to run:")
 
@@ -531,10 +895,10 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
     <div class="company-header-card">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.85rem;">
             <div>
-                <div style="font-size: 1.7rem; font-weight: 700; color: #1F497D; line-height: 1.25;">
-                    🏢 {company_name} <span style="font-size: 1.2rem; color: #4A5568; font-weight: 500;">({ticker})</span>
+                <div style="font-size: 1.7rem; font-weight: 700; color: {THEME['text_primary']}; line-height: 1.25;">
+                    🏢 {company_name} <span style="font-size: 1.2rem; color: {THEME['text_secondary']}; font-weight: 500;">({ticker})</span>
                 </div>
-                <div style="font-size: 0.92rem; color: #4A5568; margin-top: 0.35rem; line-height: 1.4;">
+                <div style="font-size: 0.92rem; color: {THEME['text_secondary']}; margin-top: 0.35rem; line-height: 1.4;">
                     SEC Central Index Key: <b>CIK {cik_str}</b> &nbsp;•&nbsp; Reporting Period: <b>{fiscal_horizon}</b> &nbsp;•&nbsp; Master Workbook: <b>{Path(output_filepath).name}</b>
                 </div>
             </div>
@@ -776,7 +1140,7 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
                 y=stock_series,
                 name="Stock Price ($)",
                 mode="lines+markers",
-                line=dict(color="#1F497D", width=3),
+                line=dict(color=THEME["chart_primary_line"], width=3),
                 marker=dict(size=8, symbol="circle"),
                 hovertemplate="FY %{x}<br>Stock Price: $%{y:,.2f}<extra></extra>"
             ),
@@ -788,23 +1152,22 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
                 y=pn_series,
                 name="P/N Ratio",
                 mode="lines+markers",
-                line=dict(color="#E4572E", width=3, dash="dot"),
+                line=dict(color=THEME["chart_secondary_line"], width=3, dash="dot"),
                 marker=dict(size=8, symbol="diamond"),
                 hovertemplate="FY %{x}<br>P/N Ratio: %{y:.2f}<extra></extra>"
             ),
             secondary_y=True
         )
-        fig_dual.update_layout(
-            title_text=f"<b>{company_name} ({ticker}) — Stock Price vs. MD&A Sentiment P/N Ratio</b>",
-            title_font=dict(size=16, color="#1F497D"),
-            xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-            yaxis=dict(title="Historical Stock Price ($)", tickprefix="$", showgrid=True, gridcolor="#EDF2F7"),
-            yaxis2=dict(title="MD&A Sentiment P/N Ratio", showgrid=False, tickformat=".2f"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            template="plotly_white",
-            hovermode="x unified",
+        apply_chart_theme(
+            fig_dual,
+            title=f"{company_name} ({ticker}) — Stock Price vs. MD&A Sentiment P/N Ratio",
+            xaxis_title="Fiscal Year",
+            yaxis_title="Historical Stock Price ($)",
+            yaxis2_title="MD&A Sentiment P/N Ratio",
             height=460,
-            margin=dict(l=60, r=60, t=80, b=50)
+            hovermode="x unified",
+            margin=dict(l=60, r=60, t=80, b=50),
+            tickprefix="$"
         )
         st.plotly_chart(fig_dual, width="stretch", key=f"{prefix}_{ticker}_dual_axis")
 
@@ -828,7 +1191,7 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
                 ret_meta.append((p_c, p_p, y_p))
 
         if ret_years:
-            bar_colors = ["#2B6CB0" if v >= 0 else "#C53030" for v in ret_vals]
+            bar_colors = [THEME["chart_positive_color"] if v >= 0 else THEME["chart_negative_color"] for v in ret_vals]
             fig_ret = go.Figure(go.Bar(
                 x=ret_years,
                 y=ret_vals,
@@ -836,14 +1199,15 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
                 customdata=ret_meta,
                 hovertemplate="<b>%{x}</b><br>YoY Return: %{y:+.2f}%<br>Price: $%{customdata[0]:,.2f} (FY %{customdata[2]}: $%{customdata[1]:,.2f})<extra></extra>"
             ))
-            fig_ret.update_layout(
-                title_text=f"<b>{company_name} ({ticker}) — Annual Stock Price Return</b>",
-                title_font=dict(size=15, color="#1F497D"),
-                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                yaxis=dict(title="Annual Return (%)", ticksuffix="%", showgrid=True, gridcolor="#EDF2F7", zeroline=True, zerolinecolor="#CBD5E0", zerolinewidth=1.5),
-                template="plotly_white",
+            apply_chart_theme(
+                fig_ret,
+                title=f"{company_name} ({ticker}) — Annual Stock Price Return",
+                xaxis_title="Fiscal Year",
+                yaxis_title="Annual Return (%)",
                 height=360,
-                margin=dict(l=60, r=40, t=60, b=40)
+                show_legend=False,
+                margin=dict(l=60, r=40, t=60, b=40),
+                ticksuffix="%"
             )
             st.plotly_chart(fig_ret, width="stretch", key=f"{prefix}_{ticker}_annual_ret")
 
@@ -978,28 +1342,35 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
         with c_r1:
             fig_cr = go.Figure(go.Scatter(
                 x=chrono_years, y=cr_series, mode="lines+markers",
-                line=dict(color="#1F497D", width=2.5), marker=dict(size=7),
+                line=dict(color=THEME["chart_primary_line"], width=2.5), marker=dict(size=7),
                 hovertemplate="FY %{x}<br>Current Ratio: %{y:.2f}<extra></extra>"
             ))
-            fig_cr.update_layout(
-                title="<b>1. Current Ratio — Liquidity</b>", title_font=dict(size=14, color="#1F497D"),
-                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                yaxis=dict(title="Current Ratio", showgrid=True, gridcolor="#EDF2F7"),
-                template="plotly_white", height=300, margin=dict(l=40, r=20, t=50, b=40)
+            apply_chart_theme(
+                fig_cr,
+                title="1. Current Ratio — Liquidity",
+                xaxis_title="Fiscal Year",
+                yaxis_title="Current Ratio",
+                height=300,
+                show_legend=False,
+                margin=dict(l=40, r=20, t=50, b=40)
             )
             st.plotly_chart(fig_cr, width="stretch", key=f"{prefix}_{ticker}_cr_trend")
 
         with c_r2:
             fig_da = go.Figure(go.Scatter(
                 x=chrono_years, y=da_series, mode="lines+markers",
-                line=dict(color="#C53030", width=2.5), marker=dict(size=7),
+                line=dict(color=THEME["chart_negative_color"], width=2.5), marker=dict(size=7),
                 hovertemplate="FY %{x}<br>Debt-to-Assets: %{y:.2f}%<extra></extra>"
             ))
-            fig_da.update_layout(
-                title="<b>2. Debt-to-Assets Ratio — Solvency</b>", title_font=dict(size=14, color="#1F497D"),
-                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                yaxis=dict(title="Debt-to-Assets (%)", ticksuffix="%", showgrid=True, gridcolor="#EDF2F7"),
-                template="plotly_white", height=300, margin=dict(l=40, r=20, t=50, b=40)
+            apply_chart_theme(
+                fig_da,
+                title="2. Debt-to-Assets Ratio — Solvency",
+                xaxis_title="Fiscal Year",
+                yaxis_title="Debt-to-Assets (%)",
+                height=300,
+                show_legend=False,
+                margin=dict(l=40, r=20, t=50, b=40),
+                ticksuffix="%"
             )
             st.plotly_chart(fig_da, width="stretch", key=f"{prefix}_{ticker}_da_trend")
 
@@ -1007,28 +1378,35 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
         with c_r3:
             fig_at = go.Figure(go.Scatter(
                 x=chrono_years, y=at_series, mode="lines+markers",
-                line=dict(color="#2B6CB0", width=2.5), marker=dict(size=7),
+                line=dict(color=THEME["accent_blue"], width=2.5), marker=dict(size=7),
                 hovertemplate="FY %{x}<br>Asset Turnover: %{y:.2f}<extra></extra>"
             ))
-            fig_at.update_layout(
-                title="<b>3. Total Asset Turnover — Efficiency</b>", title_font=dict(size=14, color="#1F497D"),
-                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                yaxis=dict(title="Asset Turnover", showgrid=True, gridcolor="#EDF2F7"),
-                template="plotly_white", height=300, margin=dict(l=40, r=20, t=50, b=40)
+            apply_chart_theme(
+                fig_at,
+                title="3. Total Asset Turnover — Efficiency",
+                xaxis_title="Fiscal Year",
+                yaxis_title="Asset Turnover",
+                height=300,
+                show_legend=False,
+                margin=dict(l=40, r=20, t=50, b=40)
             )
             st.plotly_chart(fig_at, width="stretch", key=f"{prefix}_{ticker}_at_trend")
 
         with c_r4:
             fig_pm = go.Figure(go.Scatter(
                 x=chrono_years, y=pm_series, mode="lines+markers",
-                line=dict(color="#2F855A", width=2.5), marker=dict(size=7),
+                line=dict(color=THEME["chart_positive_color"], width=2.5), marker=dict(size=7),
                 hovertemplate="FY %{x}<br>Net Profit Margin: %{y:.2f}%<extra></extra>"
             ))
-            fig_pm.update_layout(
-                title="<b>4. Net Profit Margin — Profitability</b>", title_font=dict(size=14, color="#1F497D"),
-                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                yaxis=dict(title="Net Margin (%)", ticksuffix="%", showgrid=True, gridcolor="#EDF2F7"),
-                template="plotly_white", height=300, margin=dict(l=40, r=20, t=50, b=40)
+            apply_chart_theme(
+                fig_pm,
+                title="4. Net Profit Margin — Profitability",
+                xaxis_title="Fiscal Year",
+                yaxis_title="Net Margin (%)",
+                height=300,
+                show_legend=False,
+                margin=dict(l=40, r=20, t=50, b=40),
+                ticksuffix="%"
             )
             st.plotly_chart(fig_pm, width="stretch", key=f"{prefix}_{ticker}_pm_trend")
 
@@ -1090,24 +1468,22 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
             x=chrono_years,
             y=pos_words,
             name="Positive Financial Words",
-            marker_color="#2B6CB0",
+            marker_color=THEME["chart_primary_line"] if is_dark else "#2B6CB0",
             hovertemplate="<b>%{x}</b><br>Category: Positive Words<br>Word Count: %{y:,d}<extra></extra>"
         ))
         fig_pn_bars.add_trace(go.Bar(
             x=chrono_years,
             y=neg_words,
             name="Negative Financial Words",
-            marker_color="#E4572E",
+            marker_color=THEME["chart_negative_color"] if is_dark else "#E4572E",
             hovertemplate="<b>%{x}</b><br>Category: Negative Words<br>Word Count: %{y:,d}<extra></extra>"
         ))
-        fig_pn_bars.update_layout(
-            title=f"<b>Loughran-McDonald MD&A Sentiment Word Counts ({ticker})</b>",
-            title_font=dict(size=15, color="#1F497D"),
+        apply_chart_theme(
+            fig_pn_bars,
+            title=f"Loughran-McDonald MD&A Sentiment Word Counts ({ticker})",
+            xaxis_title="Fiscal Reporting Period",
+            yaxis_title="Word Count (Item 7 MD&A)",
             barmode="group",
-            xaxis=dict(title="Fiscal Reporting Period", type="category", showgrid=True, gridcolor="#EDF2F7"),
-            yaxis=dict(title="Word Count (Item 7 MD&A)", showgrid=True, gridcolor="#EDF2F7"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            template="plotly_white",
             height=380,
             margin=dict(l=60, r=30, t=70, b=50)
         )
@@ -1155,26 +1531,28 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
             y=pn_ratios,
             mode="lines+markers",
             name="P/N Ratio",
-            line=dict(color="#1F497D", width=3),
+            line=dict(color=THEME["chart_primary_line"], width=3),
             marker=dict(size=8, symbol="diamond"),
             hovertemplate="<b>%{x}</b><br>P/N Ratio: %{y:.2f}<extra></extra>"
         ))
         fig_pn_line.add_hline(
             y=1.0,
             line_dash="dash",
-            line_color="#A0AEC0",
+            line_color=THEME["chart_neutral_line"],
             line_width=1.5,
             annotation_text="P/N = 1.0 (Neutral Baseline)",
-            annotation_position="top right"
+            annotation_position="top right",
+            annotation_font_color=THEME["text_secondary"]
         )
-        fig_pn_line.update_layout(
-            title=f"<b>MD&A Positive-to-Negative Ratio — {company_name} ({ticker})</b>",
-            title_font=dict(size=15, color="#1F497D"),
-            xaxis=dict(title="Fiscal Reporting Period", type="category", showgrid=True, gridcolor="#EDF2F7"),
-            yaxis=dict(title="P/N Ratio", showgrid=True, gridcolor="#EDF2F7", tickformat=".2f"),
-            template="plotly_white",
+        apply_chart_theme(
+            fig_pn_line,
+            title=f"MD&A Positive-to-Negative Ratio — {company_name} ({ticker})",
+            xaxis_title="Fiscal Reporting Period",
+            yaxis_title="P/N Ratio",
             height=360,
-            margin=dict(l=60, r=40, t=60, b=50)
+            show_legend=False,
+            margin=dict(l=60, r=40, t=60, b=50),
+            tickformat=".2f"
         )
         st.plotly_chart(fig_pn_line, width="stretch", key=f"{prefix}_{ticker}_pn_line")
 
@@ -1224,7 +1602,11 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
 
         if selected_add_cats:
             fig_add = go.Figure()
-            palette = ["#4A5568", "#D69E2E", "#805AD5", "#DD6B20", "#319795", "#E53E3E"]
+            palette = (
+                ["#4C8DFF", "#F2C94C", "#B794F4", "#FF7A59", "#27C499", "#FF5C5C"]
+                if is_dark else
+                ["#4A5568", "#D69E2E", "#805AD5", "#DD6B20", "#319795", "#E53E3E"]
+            )
             for idx, cat in enumerate(selected_add_cats):
                 cat_series = [r.get("other_sentiment", {}).get(cat, 0) for r in analysis_data]
                 fig_add.add_trace(go.Scatter(
@@ -1236,13 +1618,11 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
                     marker=dict(size=7),
                     hovertemplate=f"<b>%{{x}}</b><br>{cat}: %{{y:,d}} words<extra></extra>"
                 ))
-            fig_add.update_layout(
-                title=f"<b>Additional MD&A Sentiment Trends — {company_name} ({ticker})</b>",
-                title_font=dict(size=15, color="#1F497D"),
-                xaxis=dict(title="Fiscal Reporting Period", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                yaxis=dict(title="Word Count (Item 7 MD&A)", showgrid=True, gridcolor="#EDF2F7"),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                template="plotly_white",
+            apply_chart_theme(
+                fig_add,
+                title=f"Additional MD&A Sentiment Trends — {company_name} ({ticker})",
+                xaxis_title="Fiscal Reporting Period",
+                yaxis_title="Word Count (Item 7 MD&A)",
                 height=380,
                 margin=dict(l=60, r=40, t=60, b=50)
             )
@@ -1280,21 +1660,21 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
         with col_g1:
             fig_rev_ni = go.Figure()
             fig_rev_ni.add_trace(go.Bar(
-                x=growth_years, y=rev_vals, name="Revenue", marker_color="#1F497D",
+                x=growth_years, y=rev_vals, name="Revenue", marker_color=THEME["chart_primary_line"],
                 hovertemplate="<b>%{x}</b><br>Revenue: $%{y:,.0f}<extra></extra>"
             ))
             fig_rev_ni.add_trace(go.Bar(
-                x=growth_years, y=ni_vals, name="Net Income", marker_color="#2F855A",
+                x=growth_years, y=ni_vals, name="Net Income", marker_color=THEME["chart_positive_color"],
                 hovertemplate="<b>%{x}</b><br>Net Income: $%{y:,.0f}<extra></extra>"
             ))
-            fig_rev_ni.update_layout(
-                title="<b>1. Revenue vs. Net Income Comparison</b>",
-                title_font=dict(size=14, color="#1F497D"),
+            apply_chart_theme(
+                fig_rev_ni,
+                title="1. Revenue vs. Net Income Comparison",
+                xaxis_title="Fiscal Year",
+                yaxis_title=f"Amount ({stmt_unit})" if stmt_unit else "Amount ($)",
                 barmode="group",
-                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                yaxis=dict(title=f"Amount ({stmt_unit})" if stmt_unit else "Amount ($)", showgrid=True, gridcolor="#EDF2F7"),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                template="plotly_white", height=350, margin=dict(l=50, r=20, t=60, b=40)
+                height=350,
+                margin=dict(l=50, r=20, t=60, b=40)
             )
             st.plotly_chart(fig_rev_ni, width="stretch", key=f"{prefix}_{ticker}_rev_ni")
 
@@ -1311,17 +1691,20 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
                     rev_yoy_vals.append(yoy)
 
             if rev_yoy_years:
-                yoy_colors = ["#2B6CB0" if v >= 0 else "#C53030" for v in rev_yoy_vals]
+                yoy_colors = [THEME["chart_positive_color"] if v >= 0 else THEME["chart_negative_color"] for v in rev_yoy_vals]
                 fig_rev_growth = go.Figure(go.Bar(
                     x=rev_yoy_years, y=rev_yoy_vals, marker_color=yoy_colors,
                     hovertemplate="<b>%{x}</b><br>YoY Revenue Growth: %{y:+.2f}%<extra></extra>"
                 ))
-                fig_rev_growth.update_layout(
-                    title="<b>2. YoY Revenue Growth Trend (%)</b>",
-                    title_font=dict(size=14, color="#1F497D"),
-                    xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                    yaxis=dict(title="Revenue Growth (%)", ticksuffix="%", showgrid=True, gridcolor="#EDF2F7", zeroline=True, zerolinecolor="#CBD5E0"),
-                    template="plotly_white", height=350, margin=dict(l=50, r=20, t=60, b=40)
+                apply_chart_theme(
+                    fig_rev_growth,
+                    title="2. YoY Revenue Growth Trend (%)",
+                    xaxis_title="Fiscal Year",
+                    yaxis_title="Revenue Growth (%)",
+                    height=350,
+                    show_legend=False,
+                    margin=dict(l=50, r=20, t=60, b=40),
+                    ticksuffix="%"
                 )
                 st.plotly_chart(fig_rev_growth, width="stretch", key=f"{prefix}_{ticker}_rev_growth")
 
@@ -1329,15 +1712,17 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
         st.markdown("<br>", unsafe_allow_html=True)
         fig_ni_trend = go.Figure(go.Scatter(
             x=growth_years, y=ni_vals, mode="lines+markers",
-            line=dict(color="#2F855A", width=3), marker=dict(size=8, symbol="diamond"),
+            line=dict(color=THEME["chart_positive_color"], width=3), marker=dict(size=8, symbol="diamond"),
             hovertemplate="<b>%{x}</b><br>Net Income: $%{y:,.0f}<extra></extra>"
         ))
-        fig_ni_trend.update_layout(
-            title=f"<b>3. Net Income Trajectory ({stmt_unit})</b>" if stmt_unit else "<b>3. Net Income Trajectory</b>",
-            title_font=dict(size=14, color="#1F497D"),
-            xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-            yaxis=dict(title=f"Net Income ({stmt_unit})" if stmt_unit else "Net Income ($)", showgrid=True, gridcolor="#EDF2F7"),
-            template="plotly_white", height=320, margin=dict(l=50, r=20, t=50, b=40)
+        apply_chart_theme(
+            fig_ni_trend,
+            title=f"3. Net Income Trajectory ({stmt_unit})" if stmt_unit else "3. Net Income Trajectory",
+            xaxis_title="Fiscal Year",
+            yaxis_title=f"Net Income ({stmt_unit})" if stmt_unit else "Net Income ($)",
+            height=320,
+            show_legend=False,
+            margin=dict(l=50, r=20, t=50, b=40)
         )
         st.plotly_chart(fig_ni_trend, width="stretch", key=f"{prefix}_{ticker}_ni_trend")
 
@@ -1429,10 +1814,10 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
     <div class="company-header-card">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.85rem;">
             <div>
-                <div style="font-size: 1.7rem; font-weight: 700; color: #1F497D; line-height: 1.25;">
-                    🍎 Apple Inc. (AAPL) <span style="font-size: 1.2rem; color: #718096; font-weight: 400;">vs.</span> ⚡ Tesla, Inc. (TSLA)
+                <div style="font-size: 1.7rem; font-weight: 700; color: {THEME['text_primary']}; line-height: 1.25;">
+                    🍎 Apple Inc. (AAPL) <span style="font-size: 1.2rem; color: {THEME['text_muted']}; font-weight: 400;">vs.</span> ⚡ Tesla, Inc. (TSLA)
                 </div>
-                <div style="font-size: 0.92rem; color: #4A5568; margin-top: 0.35rem; line-height: 1.4;">
+                <div style="font-size: 0.92rem; color: {THEME['text_secondary']}; margin-top: 0.35rem; line-height: 1.4;">
                     Comparative Executive Financial & Sentiment Dashboard &nbsp;•&nbsp; Horizon: <b>{target_filing_count} Comparable Fiscal Years</b>
                 </div>
             </div>
@@ -1459,8 +1844,8 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
         <div class="metric-category">Market Value</div>
         <div class="metric-name">Stock Price</div>
         <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
-            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_p}</b></div>
-            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_p}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['aapl_color']}; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:{THEME['aapl_color']};">{aapl_p}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['tsla_color']}; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:{THEME['tsla_color']};">{tsla_p}</b></div>
         </div>
         <div class="metric-sub">FY {aapl_latest['year']} / FY {tsla_latest['year']} Balance Sheet Date</div>
     </div>
@@ -1474,8 +1859,8 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
         <div class="metric-category">Liquidity</div>
         <div class="metric-name">Current Ratio</div>
         <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
-            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_cr}</b></div>
-            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_cr}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['aapl_color']}; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:{THEME['aapl_color']};">{aapl_cr}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['tsla_color']}; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:{THEME['tsla_color']};">{tsla_cr}</b></div>
         </div>
         <div class="metric-sub">Current Assets / Current Liabilities</div>
     </div>
@@ -1489,8 +1874,8 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
         <div class="metric-category">Solvency</div>
         <div class="metric-name">Debt-to-Assets</div>
         <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
-            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_da}</b></div>
-            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_da}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['aapl_color']}; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:{THEME['aapl_color']};">{aapl_da}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['tsla_color']}; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:{THEME['tsla_color']};">{tsla_da}</b></div>
         </div>
         <div class="metric-sub">Total Liabilities / Total Assets</div>
     </div>
@@ -1504,8 +1889,8 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
         <div class="metric-category">Efficiency</div>
         <div class="metric-name">Asset Turnover</div>
         <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
-            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_at}</b></div>
-            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_at}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['aapl_color']}; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:{THEME['aapl_color']};">{aapl_at}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['tsla_color']}; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:{THEME['tsla_color']};">{tsla_at}</b></div>
         </div>
         <div class="metric-sub">Revenue / Average Assets</div>
     </div>
@@ -1519,8 +1904,8 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
         <div class="metric-category">Profitability</div>
         <div class="metric-name">Net Margin</div>
         <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
-            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_pm}</b></div>
-            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_pm}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['aapl_color']}; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:{THEME['aapl_color']};">{aapl_pm}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['tsla_color']}; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:{THEME['tsla_color']};">{tsla_pm}</b></div>
         </div>
         <div class="metric-sub">Net Income / Revenue</div>
     </div>
@@ -1534,8 +1919,8 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
         <div class="metric-category">MD&A Sentiment</div>
         <div class="metric-name">P/N Ratio</div>
         <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
-            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_pn}</b></div>
-            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_pn}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['aapl_color']}; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:{THEME['aapl_color']};">{aapl_pn}</b></div>
+            <div><span style="font-size:0.82rem; color:{THEME['tsla_color']}; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:{THEME['tsla_color']};">{tsla_pn}</b></div>
         </div>
         <div class="metric-sub">Positive Words / Negative Words</div>
     </div>
@@ -1561,22 +1946,25 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
     fig_idx_stock = go.Figure()
     fig_idx_stock.add_trace(go.Scatter(
         x=chart_years, y=aapl_stock_idx, mode="lines+markers",
-        name="Apple (AAPL)", line=dict(color="#1F497D", width=3), marker=dict(size=8, symbol="circle"),
+        name="Apple (AAPL)", line=dict(color=THEME["aapl_color"], width=3), marker=dict(size=8, symbol="circle"),
         hovertemplate="<b>AAPL (FY %{x})</b><br>Index: %{y:.1f}<extra></extra>"
     ))
     fig_idx_stock.add_trace(go.Scatter(
         x=chart_years, y=tsla_stock_idx, mode="lines+markers",
-        name="Tesla (TSLA)", line=dict(color="#E4572E", width=3), marker=dict(size=8, symbol="diamond"),
+        name="Tesla (TSLA)", line=dict(color=THEME["tsla_color"], width=3), marker=dict(size=8, symbol="diamond"),
         hovertemplate="<b>TSLA (FY %{x})</b><br>Index: %{y:.1f}<extra></extra>"
     ))
-    fig_idx_stock.add_hline(y=100.0, line_dash="dash", line_color="#A0AEC0", annotation_text="Base Year = 100")
-    fig_idx_stock.update_layout(
-        title="<b>Indexed Stock Performance — Base Year = 100</b>",
-        title_font=dict(size=15, color="#1F497D"),
-        xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-        yaxis=dict(title="Indexed Performance (Base=100)", showgrid=True, gridcolor="#EDF2F7"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        template="plotly_white", height=400, margin=dict(l=50, r=20, t=60, b=40)
+    fig_idx_stock.add_hline(
+        y=100.0, line_dash="dash", line_color=THEME["chart_neutral_line"],
+        annotation_text="Base Year = 100", annotation_font_color=THEME["text_secondary"]
+    )
+    apply_chart_theme(
+        fig_idx_stock,
+        title="Indexed Stock Performance — Base Year = 100",
+        xaxis_title="Fiscal Year",
+        yaxis_title="Indexed Performance (Base=100)",
+        height=400,
+        margin=dict(l=50, r=20, t=60, b=40)
     )
     st.plotly_chart(fig_idx_stock, width="stretch", key="comp_chart_idx_stock")
 
@@ -1591,22 +1979,26 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
     fig_pn_comp = go.Figure()
     fig_pn_comp.add_trace(go.Scatter(
         x=chart_years, y=aapl_pn_series, mode="lines+markers",
-        name="Apple P/N Ratio", line=dict(color="#1F497D", width=2.5), marker=dict(size=8, symbol="circle"),
+        name="Apple P/N Ratio", line=dict(color=THEME["aapl_color"], width=2.5), marker=dict(size=8, symbol="circle"),
         hovertemplate="<b>AAPL (FY %{x})</b><br>P/N Ratio: %{y:.2f}<extra></extra>"
     ))
     fig_pn_comp.add_trace(go.Scatter(
         x=chart_years, y=tsla_pn_series, mode="lines+markers",
-        name="Tesla P/N Ratio", line=dict(color="#E4572E", width=2.5), marker=dict(size=8, symbol="diamond"),
+        name="Tesla P/N Ratio", line=dict(color=THEME["tsla_color"], width=2.5), marker=dict(size=8, symbol="diamond"),
         hovertemplate="<b>TSLA (FY %{x})</b><br>P/N Ratio: %{y:.2f}<extra></extra>"
     ))
-    fig_pn_comp.add_hline(y=1.0, line_dash="dash", line_color="#A0AEC0", annotation_text="P/N = 1.0 (Neutral Baseline)")
-    fig_pn_comp.update_layout(
-        title="<b>MD&A Sentiment P/N Ratio Comparison</b>",
-        title_font=dict(size=15, color="#1F497D"),
-        xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-        yaxis=dict(title="P/N Ratio", showgrid=True, gridcolor="#EDF2F7", tickformat=".2f"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        template="plotly_white", height=380, margin=dict(l=50, r=20, t=60, b=40)
+    fig_pn_comp.add_hline(
+        y=1.0, line_dash="dash", line_color=THEME["chart_neutral_line"],
+        annotation_text="P/N = 1.0 (Neutral Baseline)", annotation_font_color=THEME["text_secondary"]
+    )
+    apply_chart_theme(
+        fig_pn_comp,
+        title="MD&A Sentiment P/N Ratio Comparison",
+        xaxis_title="Fiscal Year",
+        yaxis_title="P/N Ratio",
+        height=380,
+        margin=dict(l=50, r=20, t=60, b=40),
+        tickformat=".2f"
     )
     st.plotly_chart(fig_pn_comp, width="stretch", key="comp_chart_pn_line")
 
@@ -1654,21 +2046,21 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
     fig_ratio_comp = go.Figure()
     fig_ratio_comp.add_trace(go.Scatter(
         x=chart_years, y=aapl_r_vals, mode="lines+markers",
-        name="Apple (AAPL)", line=dict(color="#1F497D", width=2.5), marker=dict(size=8, symbol="circle"),
+        name="Apple (AAPL)", line=dict(color=THEME["aapl_color"], width=2.5), marker=dict(size=8, symbol="circle"),
         hovertemplate=f"<b>AAPL (FY %{{x}})</b><br>{ratio_choice}: {val_hover}<extra></extra>"
     ))
     fig_ratio_comp.add_trace(go.Scatter(
         x=chart_years, y=tsla_r_vals, mode="lines+markers",
-        name="Tesla (TSLA)", line=dict(color="#E4572E", width=2.5), marker=dict(size=8, symbol="diamond"),
+        name="Tesla (TSLA)", line=dict(color=THEME["tsla_color"], width=2.5), marker=dict(size=8, symbol="diamond"),
         hovertemplate=f"<b>TSLA (FY %{{x}})</b><br>{ratio_choice}: {val_hover}<extra></extra>"
     ))
-    fig_ratio_comp.update_layout(
-        title=f"<b>{ratio_choice} — Apple vs. Tesla</b>",
-        title_font=dict(size=15, color="#1F497D"),
-        xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-        yaxis=dict(title=y_title, showgrid=True, gridcolor="#EDF2F7"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        template="plotly_white", height=380, margin=dict(l=50, r=20, t=60, b=40)
+    apply_chart_theme(
+        fig_ratio_comp,
+        title=f"{ratio_choice} — Apple vs. Tesla",
+        xaxis_title="Fiscal Year",
+        yaxis_title=y_title,
+        height=380,
+        margin=dict(l=50, r=20, t=60, b=40)
     )
     st.plotly_chart(fig_ratio_comp, width="stretch", key="comp_chart_ratio_line")
 
@@ -1691,22 +2083,25 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
     fig_idx_rev = go.Figure()
     fig_idx_rev.add_trace(go.Scatter(
         x=chart_years, y=aapl_rev_idx, mode="lines+markers",
-        name="Apple Revenue Index", line=dict(color="#1F497D", width=3), marker=dict(size=8, symbol="circle"),
+        name="Apple Revenue Index", line=dict(color=THEME["aapl_color"], width=3), marker=dict(size=8, symbol="circle"),
         hovertemplate="<b>AAPL Revenue Index (FY %{x})</b><br>Index: %{y:.1f}<extra></extra>"
     ))
     fig_idx_rev.add_trace(go.Scatter(
         x=chart_years, y=tsla_rev_idx, mode="lines+markers",
-        name="Tesla Revenue Index", line=dict(color="#E4572E", width=3), marker=dict(size=8, symbol="diamond"),
+        name="Tesla Revenue Index", line=dict(color=THEME["tsla_color"], width=3), marker=dict(size=8, symbol="diamond"),
         hovertemplate="<b>TSLA Revenue Index (FY %{x})</b><br>Index: %{y:.1f}<extra></extra>"
     ))
-    fig_idx_rev.add_hline(y=100.0, line_dash="dash", line_color="#A0AEC0", annotation_text="Base Year = 100")
-    fig_idx_rev.update_layout(
-        title="<b>Indexed Revenue Growth — Base Year = 100</b>",
-        title_font=dict(size=15, color="#1F497D"),
-        xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-        yaxis=dict(title="Indexed Revenue (Base=100)", showgrid=True, gridcolor="#EDF2F7"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        template="plotly_white", height=400, margin=dict(l=50, r=20, t=60, b=40)
+    fig_idx_rev.add_hline(
+        y=100.0, line_dash="dash", line_color=THEME["chart_neutral_line"],
+        annotation_text="Base Year = 100", annotation_font_color=THEME["text_secondary"]
+    )
+    apply_chart_theme(
+        fig_idx_rev,
+        title="Indexed Revenue Growth — Base Year = 100",
+        xaxis_title="Fiscal Year",
+        yaxis_title="Indexed Revenue (Base=100)",
+        height=400,
+        margin=dict(l=50, r=20, t=60, b=40)
     )
     st.plotly_chart(fig_idx_rev, width="stretch", key="comp_chart_idx_rev")
 
