@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Local environment variables & secrets (PRIVATE - DO NOT COMMIT)
+.env
+.streamlit/secrets.toml
+
+# Downloaded SEC filings & extracted/cleaned data directories
+filings/
+extracted_text/
+cleaned_text/
+output/
+
+# Third-party / Copyrighted Loughran-McDonald Dictionary files
+# (Folder is tracked via dictionaries/.gitkeep)
+dictionaries/*.csv
+dictionaries/*.xlsx
+dictionaries/*.xls
+
+# Local milestone archives and backups
+*.zip
+main_*backup*.py
+main_step*.py
+
+# Operating system & editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Python virtual environments
+venv/
+.venv/
+env/

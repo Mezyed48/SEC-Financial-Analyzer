@@ -1,0 +1,3 @@
+[theme]
+# The custom CSS cards and headings are designed for a light background
+base = "light"
