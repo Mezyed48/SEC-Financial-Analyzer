@@ -25,6 +25,7 @@ from plotly.subplots import make_subplots
 import streamlit as st
 
 # Import the verified backend pipeline and dictionary functions from main.py
+import main
 from main import (
     run_analysis_workflow,
     PROJECT_ROOT,
@@ -217,8 +218,50 @@ if selected_mode and selected_mode != st.session_state.company_mode:
 # LOUGHRAN-MCDONALD DICTIONARY STATUS & DETECTION
 # ==============================================================================
 
+DEFAULT_BUNDLED_DICT_FILENAME = "Loughran-McDonald_MasterDictionary_1993-2025.csv"
 dict_dir = setup_dictionaries_directory()
-dict_filepath, dict_filename = find_dictionary_file(dict_dir)
+
+# Preserve original find_dictionary_file reference from main.py
+if not hasattr(main, "_orig_find_dictionary_file"):
+    main._orig_find_dictionary_file = main.find_dictionary_file
+
+def get_active_dictionary():
+    """
+    Determine the active Loughran-McDonald dictionary for the current session.
+    Prioritizes:
+    1. Session-level replacement uploaded by user in the current session (st.session_state)
+    2. Official bundled dictionary (dictionaries/Loughran-McDonald_MasterDictionary_1993-2025.csv)
+    3. Any valid dictionary discovered in the dictionaries directory via main.py logic
+    """
+    # 1. Check for session-level custom override
+    session_override_path = st.session_state.get("session_dict_override_path")
+    if session_override_path and os.path.isfile(session_override_path):
+        session_override_name = st.session_state.get(
+            "session_dict_override_name",
+            os.path.basename(session_override_path)
+        )
+        return session_override_path, session_override_name, True
+
+    # 2. Check for default bundled official dictionary
+    bundled_path = os.path.join(dict_dir, DEFAULT_BUNDLED_DICT_FILENAME)
+    if os.path.isfile(bundled_path):
+        return bundled_path, DEFAULT_BUNDLED_DICT_FILENAME, False
+
+    # 3. Fallback discovery using existing main.py search
+    found_path, found_name = main._orig_find_dictionary_file(dict_dir)
+    return found_path, found_name, False
+
+# Intercept main.find_dictionary_file so run_analysis_workflow transparently
+# loads the active session dictionary without modifying backend step logic
+def _session_find_dictionary_file(dictionaries_dir):
+    path, name, _ = get_active_dictionary()
+    if path and os.path.isfile(path):
+        return path, name
+    return main._orig_find_dictionary_file(dictionaries_dir)
+
+main.find_dictionary_file = _session_find_dictionary_file
+
+dict_filepath, dict_filename, is_custom_override = get_active_dictionary()
 has_dictionary = dict_filepath is not None and os.path.isfile(dict_filepath)
 
 
@@ -279,7 +322,10 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📚 Sentiment Dictionary")
     if has_dictionary:
-        st.success(f"**Loaded:** `{dict_filename}`")
+        status_label = f"**Loaded:** `{dict_filename}`"
+        if is_custom_override:
+            status_label += " *(Session Override)*"
+        st.success(status_label)
         with st.expander("Replace / Upload New Dictionary", expanded=False):
             st.caption("Upload an updated Loughran-McDonald dictionary (.csv / .xlsx):")
             uploaded_sidebar = st.file_uploader(
@@ -289,17 +335,26 @@ with st.sidebar:
                 label_visibility="collapsed"
             )
             if uploaded_sidebar is not None:
-                save_path = os.path.join(dict_dir, uploaded_sidebar.name)
+                upload_subfolder = os.path.join(dict_dir, ".session_uploads")
+                os.makedirs(upload_subfolder, exist_ok=True)
+                save_path = os.path.join(upload_subfolder, uploaded_sidebar.name)
                 with open(save_path, "wb") as f_out:
                     f_out.write(uploaded_sidebar.getbuffer())
                 check = load_loughran_mcdonald_dictionary(save_path)
                 if check and check.get("total_words", 0) > 0:
+                    st.session_state["session_dict_override_path"] = save_path
+                    st.session_state["session_dict_override_name"] = uploaded_sidebar.name
                     st.success(f"Loaded {uploaded_sidebar.name} ({check['total_words']:,d} words)!")
                     st.rerun()
                 else:
                     if os.path.exists(save_path):
                         os.remove(save_path)
                     st.error("Invalid dictionary file format. Please upload a .csv or .xlsx file.")
+            if is_custom_override:
+                if st.button("↺ Revert to Default Dictionary", key="reset_dict_btn", width="stretch"):
+                    st.session_state.pop("session_dict_override_path", None)
+                    st.session_state.pop("session_dict_override_name", None)
+                    st.rerun()
     else:
         st.warning("⚠️ **Dictionary Missing**\n\nUpload required for Step 7 sentiment analysis.")
 
@@ -333,7 +388,9 @@ if not has_dictionary:
     )
 
     if uploaded_main_dict is not None:
-        save_path = os.path.join(dict_dir, uploaded_main_dict.name)
+        upload_subfolder = os.path.join(dict_dir, ".session_uploads")
+        os.makedirs(upload_subfolder, exist_ok=True)
+        save_path = os.path.join(upload_subfolder, uploaded_main_dict.name)
         try:
             with open(save_path, "wb") as f_out:
                 f_out.write(uploaded_main_dict.getbuffer())
@@ -341,6 +398,8 @@ if not has_dictionary:
             # Validate the uploaded file using the existing dictionary-loading function
             check = load_loughran_mcdonald_dictionary(save_path)
             if check and check.get("total_words", 0) > 0:
+                st.session_state["session_dict_override_path"] = save_path
+                st.session_state["session_dict_override_name"] = uploaded_main_dict.name
                 st.success(
                     f"✅ **Dictionary Loaded Successfully!** Indexed {check['total_words']:,d} words "
                     f"across {len(check['categories'])} sentiment categories ({', '.join(check['categories'])})."

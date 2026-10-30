@@ -15,10 +15,12 @@ cleaned_text/
 output/
 
 # Third-party / Copyrighted Loughran-McDonald Dictionary files
-# (Folder is tracked via dictionaries/.gitkeep)
+# (Folder is tracked via dictionaries/.gitkeep; bundled official dictionary tracked)
 dictionaries/*.csv
 dictionaries/*.xlsx
 dictionaries/*.xls
+dictionaries/.session_uploads/
+!dictionaries/Loughran-McDonald_MasterDictionary_1993-2025.csv
 
 # Local milestone archives and backups
 *.zip
