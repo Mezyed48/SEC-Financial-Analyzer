@@ -2,14 +2,15 @@
 Streamlit Web Application: SEC 10-K Financial & Sentiment Analyzer
 
 This local web frontend wraps the verified Steps 2-9 financial analysis pipeline,
-providing an interactive interface for:
+providing an executive-style financial dashboard for:
   - Form 10-K retrieval from SEC EDGAR
   - Item 7 MD&A plain-text extraction and cleaning
   - Financial statements extraction (Income Statement, Balance Sheet, Cash Flows)
-  - Loughran-McDonald sentiment analysis (8 sentiment categories, P/N ratio)
+  - Loughran-McDonald financial sentiment analysis (8 sentiment categories, P/N ratio)
   - Historical split-adjusted stock prices (Yahoo Finance via yfinance)
-  - Financial ratio analysis (Liquidity, Solvency, Efficiency, Profitability)
-  - Interactive dual-axis Plotly visualization (Stock Price vs. P/N Ratio)
+  - 10-Year financial ratio analysis (Liquidity, Solvency, Efficiency, Profitability)
+  - Long-term revenue & earnings growth trends
+  - Apple vs. Tesla side-by-side executive comparison dashboard
   - One-click master Excel workbook (.xlsx) download
 
 Runs on:
@@ -46,7 +47,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom styling for KPI cards and headers
+# Custom styling for executive KPI cards and headers (Professional Light Theme)
 st.markdown("""
 <style>
     .main-title {
@@ -56,7 +57,7 @@ st.markdown("""
         margin-bottom: 0.2rem;
     }
     .sub-title {
-        font-size: 1.1rem;
+        font-size: 1.05rem;
         font-weight: 400;
         color: #4A5568;
         margin-bottom: 0.8rem;
@@ -64,10 +65,10 @@ st.markdown("""
     .intro-box {
         background-color: #F7FAFC;
         border-left: 4px solid #1F497D;
-        padding: 0.9rem 1.2rem;
+        padding: 0.85rem 1.2rem;
         border-radius: 6px;
-        margin-bottom: 1.5rem;
-        font-size: 0.95rem;
+        margin-bottom: 1.25rem;
+        font-size: 0.93rem;
         color: #2D3748;
         line-height: 1.5;
     }
@@ -145,6 +146,13 @@ st.markdown("""
         color: #C53030;
         font-weight: 600;
     }
+    .metric-sub-neutral {
+        font-size: 0.74rem;
+        color: #4A5568;
+        margin-top: 0.3rem;
+        line-height: 1.2;
+        font-weight: 500;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -154,22 +162,21 @@ st.markdown("""
 # ==============================================================================
 
 st.markdown('<div class="main-title">SEC 10-K Financial & Sentiment Analyzer</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Automated SEC filing analysis, financial ratios, MD&A sentiment, and historical stock prices</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Automated SEC filing analysis, financial ratios, MD&A sentiment, stock prices & cross-company comparison</div>', unsafe_allow_html=True)
 
 st.markdown("""
 <div class="intro-box">
-This tool retrieves SEC Form 10-K filings, extracts financial statement and MD&A data,
-performs Loughran-McDonald financial sentiment analysis, calculates financial ratios,
-retrieves historical stock prices, and generates a downloadable Excel analysis workbook.
+This executive dashboard retrieves SEC Form 10-K annual reports, extracts multi-year financial statements
+and Item 7 MD&A narratives, executes Loughran-McDonald sentiment analysis, computes financial ratios,
+retrieves historical stock prices, and provides interactive cross-company comparisons (Apple vs. Tesla).
 </div>
 """, unsafe_allow_html=True)
 
 
 # ==============================================================================
-# FEATURED COMPANY QUICK SWITCHER (EXECUTIVE DASHBOARD)
+# SESSION STATE INITIALIZATION
 # ==============================================================================
 
-# Initialize session state for company selection & multi-company analysis cache
 if "analysis_cache" not in st.session_state:
     st.session_state.analysis_cache = {}
 
@@ -187,31 +194,6 @@ if "sidebar_ticker_input" not in st.session_state:
 
 if "selected_filing_count" not in st.session_state:
     st.session_state.selected_filing_count = 4
-
-st.markdown("##### 🏢 Featured Company Quick Switcher")
-company_options = ["Apple (AAPL)", "Tesla (TSLA)", "Custom Ticker"]
-
-selected_mode = st.pills(
-    "Select Featured Company:",
-    options=company_options,
-    default=st.session_state.company_mode,
-    key="company_pill_selector",
-    label_visibility="collapsed"
-)
-
-if selected_mode and selected_mode != st.session_state.company_mode:
-    st.session_state.company_mode = selected_mode
-    if selected_mode == "Apple (AAPL)":
-        st.session_state.active_ticker = "AAPL"
-        st.session_state.sidebar_ticker_input = "AAPL"
-    elif selected_mode == "Tesla (TSLA)":
-        st.session_state.active_ticker = "TSLA"
-        st.session_state.sidebar_ticker_input = "TSLA"
-    elif selected_mode == "Custom Ticker":
-        custom_val = st.session_state.get("custom_ticker", "AAPL")
-        st.session_state.active_ticker = custom_val
-        st.session_state.sidebar_ticker_input = custom_val
-    st.rerun()
 
 
 # ==============================================================================
@@ -266,26 +248,95 @@ has_dictionary = dict_filepath is not None and os.path.isfile(dict_filepath)
 
 
 # ==============================================================================
+# HELPER: NEUTRAL YOY TREND INDICATOR
+# ==============================================================================
+
+def get_trend_indicator(curr_val, prev_val, is_pct=False, precision=2):
+    """
+    Generate neutral YoY trend indicator comparing current vs prior fiscal year.
+    Returns: formatted string e.g. '↑ Increased (+0.12) vs prior yr'
+    """
+    if curr_val is None or prev_val is None:
+        return "No prior comparison"
+    diff = curr_val - prev_val
+    threshold = max(0.005 * abs(prev_val), 1e-4) if prev_val != 0 else 1e-4
+    if abs(diff) <= threshold:
+        return "→ Approx. unchanged vs prior yr"
+    elif diff > 0:
+        if is_pct:
+            return f"↑ Increased ({diff * 100:+.2f}%) vs prior yr"
+        else:
+            return f"↑ Increased ({diff:+.{precision}f}) vs prior yr"
+    else:
+        if is_pct:
+            return f"↓ Decreased ({diff * 100:+.2f}%) vs prior yr"
+        else:
+            return f"↓ Decreased ({diff:+.{precision}f}) vs prior yr"
+
+
+# ==============================================================================
+# HELPER: STRICT HORIZON CACHE LOOKUP
+# ==============================================================================
+
+def get_cached_result(ticker, filing_count):
+    """
+    Retrieve cached analysis results strictly matching the requested filing-count horizon.
+    """
+    ticker_clean = str(ticker).strip().upper()
+    # 1. Exact key match: (ticker, filing_count)
+    res = st.session_state.analysis_cache.get((ticker_clean, filing_count))
+    if res and len(res.get("analysis_data", [])) == filing_count:
+        return res
+    # 2. Fallback key match: ticker alone, only if the horizon matches
+    fallback = st.session_state.analysis_cache.get(ticker_clean)
+    if fallback and len(fallback.get("analysis_data", [])) == filing_count:
+        return fallback
+    return None
+
+
+# ==============================================================================
 # SIDEBAR / USER INPUT CONTROLS
 # ==============================================================================
 
 with st.sidebar:
     st.header("⚙️ Analysis Settings")
-    st.markdown("Configure target public company and historical period horizon:")
+    st.markdown("Configure target company and historical horizon to run:")
+
+    # Quick Switcher for Run Target
+    company_options = ["Apple (AAPL)", "Tesla (TSLA)", "Custom Ticker"]
+    selected_mode = st.pills(
+        "Run Target:",
+        options=company_options,
+        default=st.session_state.company_mode,
+        key="company_pill_selector"
+    )
+
+    if selected_mode and selected_mode != st.session_state.company_mode:
+        st.session_state.company_mode = selected_mode
+        if selected_mode == "Apple (AAPL)":
+            st.session_state.active_ticker = "AAPL"
+            st.session_state.sidebar_ticker_input = "AAPL"
+        elif selected_mode == "Tesla (TSLA)":
+            st.session_state.active_ticker = "TSLA"
+            st.session_state.sidebar_ticker_input = "TSLA"
+        elif selected_mode == "Custom Ticker":
+            custom_val = st.session_state.get("custom_ticker", "AAPL")
+            st.session_state.active_ticker = custom_val
+            st.session_state.sidebar_ticker_input = custom_val
+        st.rerun()
 
     # Ensure sidebar ticker widget state strictly reflects active selection
     if st.session_state.company_mode == "Apple (AAPL)":
         st.session_state.sidebar_ticker_input = "AAPL"
         st.session_state.active_ticker = "AAPL"
         is_custom = False
-        ticker_help = "Selected via top quick-switcher (Apple Inc. — AAPL)."
+        ticker_help = "Selected via quick-switcher (Apple Inc. — AAPL)."
     elif st.session_state.company_mode == "Tesla (TSLA)":
         st.session_state.sidebar_ticker_input = "TSLA"
         st.session_state.active_ticker = "TSLA"
         is_custom = False
-        ticker_help = "Selected via top quick-switcher (Tesla, Inc. — TSLA)."
+        ticker_help = "Selected via quick-switcher (Tesla, Inc. — TSLA)."
     else:
-        # Custom Ticker mode: restore custom ticker if previous value was a fixed featured ticker
         if st.session_state.get("sidebar_ticker_input") in ("AAPL", "TSLA") and "custom_ticker" in st.session_state:
             st.session_state.sidebar_ticker_input = st.session_state.custom_ticker
             st.session_state.active_ticker = st.session_state.custom_ticker
@@ -364,27 +415,20 @@ with st.sidebar:
 
 
 # ==============================================================================
-# DICTIONARY UPLOAD INTERFACE (FOR FRESH DEPLOYMENTS)
+# DICTIONARY UPLOAD FALLBACK INTERFACE
 # ==============================================================================
 
 if not has_dictionary:
     st.warning("### ⚠️ Loughran-McDonald Sentiment Dictionary Required")
     st.markdown("""
     To perform **Step 7 (MD&A Sentiment Analysis)**, this application requires the official **Loughran-McDonald Financial Sentiment Dictionary**.
-
-    > **Notice on Copyright & Licensing:** Per academic guidelines, the proprietary dictionary file created by Tim Loughran and Bill McDonald is **not distributed** in the public GitHub repository.
-
-    **How to obtain the official dictionary:**
-    1. Visit the University of Notre Dame [Software Repository for Accounting and Finance (SRAF)](https://sraf.nd.edu/loughranmcdonald-master-dictionary/).
-    2. Download the official **Loughran-McDonald Master Dictionary** (`.csv` or `.xlsx`).
-    3. Upload the downloaded file below to activate financial sentiment analysis for your session.
+    Please upload the official dictionary file (.csv or .xlsx) from Notre Dame SRAF below.
     """)
 
     uploaded_main_dict = st.file_uploader(
         "Upload Loughran-McDonald Master Dictionary (.csv or .xlsx):",
         type=["csv", "xlsx"],
-        key="main_dict_uploader",
-        help="Upload the official Loughran-McDonald Master Dictionary obtained from Notre Dame SRAF."
+        key="main_dict_uploader"
     )
 
     if uploaded_main_dict is not None:
@@ -395,24 +439,20 @@ if not has_dictionary:
             with open(save_path, "wb") as f_out:
                 f_out.write(uploaded_main_dict.getbuffer())
 
-            # Validate the uploaded file using the existing dictionary-loading function
             check = load_loughran_mcdonald_dictionary(save_path)
             if check and check.get("total_words", 0) > 0:
                 st.session_state["session_dict_override_path"] = save_path
                 st.session_state["session_dict_override_name"] = uploaded_main_dict.name
-                st.success(
-                    f"✅ **Dictionary Loaded Successfully!** Indexed {check['total_words']:,d} words "
-                    f"across {len(check['categories'])} sentiment categories ({', '.join(check['categories'])})."
-                )
+                st.success(f"✅ Loaded {uploaded_main_dict.name} ({check['total_words']:,d} words)!")
                 st.rerun()
             else:
                 if os.path.exists(save_path):
                     os.remove(save_path)
-                st.error("❌ The uploaded file is not a valid Loughran-McDonald dictionary. Please ensure you upload the official CSV or Excel (.xlsx) file from Notre Dame SRAF.")
+                st.error("❌ Invalid dictionary file. Please upload an official CSV or Excel file.")
         except Exception as upload_err:
             if os.path.exists(save_path):
                 os.remove(save_path)
-            st.error(f"❌ Error saving uploaded dictionary: {upload_err}")
+            st.error(f"❌ Error saving dictionary: {upload_err}")
 
 
 # ==============================================================================
@@ -420,14 +460,12 @@ if not has_dictionary:
 # ==============================================================================
 
 if run_btn:
-    # Input validation
     clean_ticker = st.session_state.active_ticker.strip().upper()
     if not clean_ticker or not re.match(r"^[A-Z0-9\.\-]+$", clean_ticker):
         st.error("❌ Please enter a valid stock ticker symbol (letters, numbers, dots, or hyphens only).")
     elif not has_dictionary:
-        st.error("❌ Cannot start analysis: The Loughran-McDonald sentiment dictionary is required. Please upload the dictionary file above first.")
+        st.error("❌ Cannot start analysis: The Loughran-McDonald sentiment dictionary is required. Please upload the dictionary file first.")
     else:
-        # Progress tracking status container
         status_box = st.status(f"Starting SEC 10-K Analysis for **{clean_ticker}** ({input_filing_count} filings)...", expanded=True)
         progress_bar = st.progress(0.0)
 
@@ -437,7 +475,6 @@ if run_btn:
             status_box.write(f"**Step {step_num}/10: {stage_name}** — {description}")
 
         try:
-            # Execute backend workflow without duplicating logic
             workflow_results = run_analysis_workflow(
                 ticker=clean_ticker,
                 filing_count=input_filing_count,
@@ -448,10 +485,11 @@ if run_btn:
             if workflow_results.get("success"):
                 progress_bar.progress(1.0)
                 status_box.update(label=f"✅ Analysis for {clean_ticker} complete!", state="complete", expanded=False)
-                # Store in multi-company cache by unique key (ticker, filing_count) and by ticker (Requirement 4)
+                # Store in multi-company cache by exact (ticker, filing_count) and ticker
                 cache_key = (clean_ticker, input_filing_count)
                 st.session_state.analysis_cache[cache_key] = workflow_results
                 st.session_state.analysis_cache[clean_ticker] = workflow_results
+                st.rerun()
             else:
                 progress_bar.empty()
                 status_box.update(label=f"❌ Analysis failed for {clean_ticker}", state="error", expanded=True)
@@ -464,18 +502,10 @@ if run_btn:
 
 
 # ==============================================================================
-# DISPLAY RESULTS DASHBOARD
+# RENDER INDIVIDUAL COMPANY DASHBOARD (REUSABLE COMPONENT)
 # ==============================================================================
 
-active_ticker = st.session_state.get("active_ticker", "AAPL").strip().upper()
-target_filing_count = int(st.session_state.get("selected_filing_count", 4))
-
-# Lookup in cache: exact (ticker, filing_count) first, then fallback to most recent run for ticker
-results = st.session_state.analysis_cache.get((active_ticker, target_filing_count))
-if not results and active_ticker in st.session_state.analysis_cache:
-    results = st.session_state.analysis_cache[active_ticker]
-
-if results:
+def render_company_dashboard(results, target_filing_count, prefix="company"):
     company_name = results["company_name"]
     ticker = results["ticker"]
     cik = results["cik"]
@@ -488,13 +518,15 @@ if results:
     available_cats = results["available_categories"]
     output_filepath = results["output_filepath"]
 
-    # Polished Executive Company Header (Requirement 1 & 6)
-    oldest_yr = analysis_data[0]["year"]
-    latest_yr = analysis_data[-1]["year"]
-    fiscal_horizon = f"FY {oldest_yr} – FY {latest_yr}"
+    oldest = analysis_data[0]
+    latest = analysis_data[-1]
+    prev = analysis_data[-2] if num_years >= 2 else None
+
+    fiscal_horizon = f"FY {oldest['year']} – FY {latest['year']}"
     reporting_scope = f"{num_years}-Year SEC 10-K Analysis"
     cik_str = str(cik).zfill(10)
 
+    # Polished Company Header
     st.markdown(f"""
     <div class="company-header-card">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.85rem;">
@@ -508,33 +540,32 @@ if results:
             </div>
             <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                 <span class="company-badge">📋 {reporting_scope}</span>
-                <span class="company-badge-secondary">📅 FY {oldest_yr} – FY {latest_yr}</span>
+                <span class="company-badge-secondary">📅 FY {oldest['year']} – FY {latest['year']}</span>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Six Navigation Tabs
-    tab_overview, tab_ratios, tab_sentiment, tab_stock, tab_statements, tab_download = st.tabs([
+    # Seven Navigation Tabs for Company Dashboard
+    tab_overview, tab_stock_sent, tab_statements, tab_ratios, tab_sentiment, tab_growth, tab_download = st.tabs([
         "📊 Overview",
-        "📈 Financial Ratios",
-        "📝 Sentiment Analysis",
-        "💲 Stock Prices",
+        "📈 Stock & Sentiment",
         "📑 Financial Statements",
+        "📉 10-Year Financial Ratios",
+        "📝 Sentiment Analysis",
+        "📊 Growth & Performance",
         "📥 Download Report"
     ])
 
     # --------------------------------------------------------------------------
-    # TAB 1: OVERVIEW & CHART
+    # TAB 1: OVERVIEW
     # --------------------------------------------------------------------------
     with tab_overview:
-        oldest = analysis_data[0]
-        latest = analysis_data[-1]
-
-        # Calculate Period Performance Metrics from existing workflow data (Requirement 2)
-        # 1. Period Stock Return
+        # Macro Performance Metrics
         oldest_p = oldest.get("stock_price")
         latest_p = latest.get("stock_price")
+        prev_p = prev.get("stock_price") if prev else None
+
         if oldest_p is not None and latest_p is not None and oldest_p > 0:
             stock_ret_pct = ((latest_p - oldest_p) / oldest_p) * 100.0
             stock_ret_str = f"{stock_ret_pct:+.1f}%"
@@ -545,10 +576,11 @@ if results:
             stock_ret_cls = ""
             stock_ret_sub = "Price data unavailable"
 
-        # 2. Period Revenue Growth (from raw_accounts_info / statement data)
         by_year = raw_accounts_info.get("by_year", {})
         oldest_rev = by_year.get(oldest["year"], {}).get("revenue")
         latest_rev = by_year.get(latest["year"], {}).get("revenue")
+        prev_rev = by_year.get(prev["year"], {}).get("revenue") if prev else None
+
         if oldest_rev is not None and latest_rev is not None and oldest_rev > 0:
             rev_growth_pct = ((latest_rev - oldest_rev) / oldest_rev) * 100.0
             rev_growth_str = f"{rev_growth_pct:+.1f}%"
@@ -559,18 +591,16 @@ if results:
             rev_growth_cls = ""
             rev_growth_sub = "Revenue data unavailable"
 
-        # 3. Latest MD&A P/N Ratio
         latest_pn = latest.get("pn_ratio")
+        prev_pn = prev.get("pn_ratio") if prev else None
         latest_pn_str = f"{latest_pn:.2f}" if latest_pn is not None else "N/A"
-        latest_pn_sub = "Positive-to-Negative Words"
+        latest_pn_trend = get_trend_indicator(latest_pn, prev_pn, precision=2)
 
-        # 4. Latest Stock Price
         latest_sp_str = f"${latest_p:,.2f}" if latest_p is not None else "N/A"
-        latest_sp_sub = f"FY {latest['year']} Balance Sheet Date"
+        latest_sp_trend = get_trend_indicator(latest_p, prev_p, precision=2)
 
-        # Section: Executive Summary (Requirement 2)
         st.subheader("📌 Executive Summary")
-        st.caption(f"Comprehensive executive snapshot for **{company_name}** across the selected {reporting_scope.lower()}.")
+        st.caption(f"Comprehensive executive snapshot for **{company_name}** across the {reporting_scope.lower()}.")
 
         st.markdown(f"**Period Macro Performance ({reporting_scope}: FY {oldest['year']} – FY {latest['year']})**")
         c_p1, c_p2, c_p3, c_p4 = st.columns(4)
@@ -598,7 +628,7 @@ if results:
             <div class="metric-category">Market Value</div>
             <div class="metric-name">Latest Stock Price</div>
             <div class="metric-val">{latest_sp_str}</div>
-            <div class="metric-sub">{latest_sp_sub}</div>
+            <div class="metric-sub-neutral">{latest_sp_trend}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -607,7 +637,7 @@ if results:
             <div class="metric-category">MD&A Sentiment</div>
             <div class="metric-name">Latest P/N Ratio</div>
             <div class="metric-val">{latest_pn_str}</div>
-            <div class="metric-sub">{latest_pn_sub}</div>
+            <div class="metric-sub-neutral">{latest_pn_trend}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -617,49 +647,53 @@ if results:
 
         # 1. Current Ratio
         cr_val = f"{latest['current_ratio']:.2f}" if latest.get("current_ratio") is not None else "N/A"
+        cr_trend = get_trend_indicator(latest.get("current_ratio"), prev.get("current_ratio") if prev else None, precision=2)
         col_m1.markdown(f"""
         <div class="metric-card">
             <div class="metric-category">Liquidity</div>
             <div class="metric-name">Current Ratio</div>
             <div class="metric-val">{cr_val}</div>
-            <div class="metric-sub">Current Assets / Liabilities</div>
+            <div class="metric-sub-neutral">{cr_trend}</div>
         </div>
         """, unsafe_allow_html=True)
 
         # 2. Debt-to-Assets
         da_val = f"{latest['debt_to_assets'] * 100:.2f}%" if latest.get("debt_to_assets") is not None else "N/A"
+        da_trend = get_trend_indicator(latest.get("debt_to_assets"), prev.get("debt_to_assets") if prev else None, is_pct=True)
         col_m2.markdown(f"""
         <div class="metric-card">
             <div class="metric-category">Solvency</div>
             <div class="metric-name">Debt-to-Assets</div>
             <div class="metric-val">{da_val}</div>
-            <div class="metric-sub">Total Liabilities / Assets</div>
+            <div class="metric-sub-neutral">{da_trend}</div>
         </div>
         """, unsafe_allow_html=True)
 
         # 3. Total Asset Turnover
         at_val = f"{latest['asset_turnover']:.2f}" if latest.get("asset_turnover") is not None else "N/A"
+        at_trend = get_trend_indicator(latest.get("asset_turnover"), prev.get("asset_turnover") if prev else None, precision=2)
         col_m3.markdown(f"""
         <div class="metric-card">
             <div class="metric-category">Efficiency</div>
             <div class="metric-name">Asset Turnover</div>
             <div class="metric-val">{at_val}</div>
-            <div class="metric-sub">Revenue / Average Assets</div>
+            <div class="metric-sub-neutral">{at_trend}</div>
         </div>
         """, unsafe_allow_html=True)
 
         # 4. Net Profit Margin
         pm_val = f"{latest['profit_margin'] * 100:.2f}%" if latest.get("profit_margin") is not None else "N/A"
+        pm_trend = get_trend_indicator(latest.get("profit_margin"), prev.get("profit_margin") if prev else None, is_pct=True)
         col_m4.markdown(f"""
         <div class="metric-card">
             <div class="metric-category">Profitability</div>
             <div class="metric-name">Net Margin</div>
             <div class="metric-val">{pm_val}</div>
-            <div class="metric-sub">Net Income / Revenue</div>
+            <div class="metric-sub-neutral">{pm_trend}</div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Section: Historical Summary Table (Requirement 3)
+        # Historical Summary Table
         st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("📋 Historical Summary")
         st.caption(f"Chronological financial ratios, stock prices, and MD&A sentiment scores (oldest to newest: FY {oldest['year']} to FY {latest['year']}).")
@@ -681,11 +715,53 @@ if results:
                 "Net Profit Margin": pm,
                 "P/N Ratio": pn
             })
-        df_hist = pd.DataFrame(hist_summary_rows)
-        st.dataframe(df_hist, width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(hist_summary_rows), width="stretch", hide_index=True)
 
-        # Section: Interactive Dual-Axis Line Chart (Requirement 4)
+        # Data Sources & Methodology Expander
         st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("📖 Data Sources & Methodology", expanded=False):
+            st.markdown("""
+            ### 🏛️ 1. SEC EDGAR Data Source & Filing Retrieval
+            - **Primary Source**: U.S. Securities and Exchange Commission (SEC EDGAR) official submissions API (`https://data.sec.gov/submissions/`).
+            - **Filing Form**: Form 10-K (Annual Reports filed by public entities under Section 13 or 15(d) of the Securities Exchange Act of 1934).
+            - **Entity Lookup**: Official SEC Central Index Key (CIK) mapped directly from the company's exchange ticker symbol.
+            - **Fair Access Compliance**: Declarative User-Agent contact header, polite pacing, and request rate throttling adhering strictly to SEC Fair Access regulations.
+
+            ---
+            ### 📅 2. Fiscal Year & `reportDate` Alignment
+            - **Period End Alignment**: Each filing's financial statements are keyed to the official period-end date (`reportDate` / balance sheet date).
+            - **Multi-Year Comparative Reporting**: Financial statements are aligned chronologically from oldest to newest fiscal year.
+            - **Account Mapping**: Standard U.S. GAAP taxonomy concepts are extracted directly from primary financial statements.
+
+            ---
+            ### 📈 3. Stock Price Methodology & Previous-Trading-Day Rule
+            - **Source**: Yahoo Finance via `yfinance`.
+            - **Price Metric**: Historical split-adjusted closing price (`Close`).
+            - **Alignment Rule**: Stock prices are matched to the exact fiscal year-end balance sheet date.
+            - **Non-Trading Day Rule**: When the balance sheet date falls on a weekend or market holiday, the system automatically selects the **most recent previous trading day**. Future trading dates are never used.
+
+            ---
+            ### 📝 4. Loughran-McDonald Financial Sentiment Scoring
+            - **Source**: University of Notre Dame Software Repository for Accounting and Finance (SRAF), developed by Tim Loughran and Bill McDonald.
+            - **Target Text**: Item 7 — *Management's Discussion and Analysis of Financial Condition and Results of Operations (MD&A)*.
+            - **Text Preprocessing**: Raw HTML/XBRL tags and tables stripped; punctuation and possessive suffixes normalized; tokenized into uppercase alphabetic words without stemming.
+            - **Dictionary Categories**: 8 domain-specific categories (*Positive, Negative, Uncertainty, Litigious, Strong Modal, Weak Modal, Constraining, Complexity*).
+            - **Positive-to-Negative (P/N) Ratio**:
+              $$\\text{P/N Ratio} = \\frac{\\text{Positive Words}}{\\text{Negative Words}}$$
+
+            ---
+            ### 🔢 5. Financial Ratio Formulas & Definitions
+            *Standard financial-analysis ratios calculated using U.S. GAAP financial-statement data.*
+            - **Current Ratio (Liquidity)**: `Current Assets / Current Liabilities`
+            - **Debt-to-Assets Ratio (Solvency)**: `Total Liabilities / Total Assets`
+            - **Total Asset Turnover (Efficiency)**: `Revenue / Average Total Assets`
+            - **Net Profit Margin (Profitability)**: `Net Income / Revenue`
+            """)
+
+    # --------------------------------------------------------------------------
+    # TAB 2: STOCK & SENTIMENT
+    # --------------------------------------------------------------------------
+    with tab_stock_sent:
         st.subheader("📈 Stock Price vs. MD&A Sentiment P/N Ratio")
         st.caption("Chronological time-series comparison with dual Y-axes (Stock Price on Left, P/N Ratio on Right).")
 
@@ -693,10 +769,8 @@ if results:
         stock_series = [r.get("stock_price") for r in analysis_data]
         pn_series = [r.get("pn_ratio") for r in analysis_data]
 
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-        # Primary Axis: Stock Price ($)
-        fig.add_trace(
+        fig_dual = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_dual.add_trace(
             go.Scatter(
                 x=chrono_years,
                 y=stock_series,
@@ -708,9 +782,7 @@ if results:
             ),
             secondary_y=False
         )
-
-        # Secondary Axis: MD&A Sentiment P/N Ratio
-        fig.add_trace(
+        fig_dual.add_trace(
             go.Scatter(
                 x=chrono_years,
                 y=pn_series,
@@ -722,8 +794,7 @@ if results:
             ),
             secondary_y=True
         )
-
-        fig.update_layout(
+        fig_dual.update_layout(
             title_text=f"<b>{company_name} ({ticker}) — Stock Price vs. MD&A Sentiment P/N Ratio</b>",
             title_font=dict(size=16, color="#1F497D"),
             xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
@@ -735,11 +806,48 @@ if results:
             height=460,
             margin=dict(l=60, r=60, t=80, b=50)
         )
+        st.plotly_chart(fig_dual, width="stretch", key=f"{prefix}_{ticker}_dual_axis")
 
-        st.plotly_chart(fig, width="stretch")
+        # Annual Stock Return Chart (New Feature)
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📊 Annual Stock Price Return (% YoY)")
+        st.caption("Year-over-year percentage price change calculated from official fiscal year-end closing prices (oldest baseline year excluded).")
 
-        # Section: Optional Correlation Metric (Requirement 5)
-        # Annual stock return: (Price_t / Price_{t-1}) - 1, paired with P/N Ratio_t
+        ret_years = []
+        ret_vals = []
+        ret_meta = []
+        for i in range(1, len(analysis_data)):
+            p_p = analysis_data[i-1].get("stock_price")
+            p_c = analysis_data[i].get("stock_price")
+            y_c = analysis_data[i]["year"]
+            y_p = analysis_data[i-1]["year"]
+            if p_p and p_c and p_p > 0:
+                ret = ((p_c / p_p) - 1.0) * 100.0
+                ret_years.append(f"FY {y_c}")
+                ret_vals.append(ret)
+                ret_meta.append((p_c, p_p, y_p))
+
+        if ret_years:
+            bar_colors = ["#2B6CB0" if v >= 0 else "#C53030" for v in ret_vals]
+            fig_ret = go.Figure(go.Bar(
+                x=ret_years,
+                y=ret_vals,
+                marker_color=bar_colors,
+                customdata=ret_meta,
+                hovertemplate="<b>%{x}</b><br>YoY Return: %{y:+.2f}%<br>Price: $%{customdata[0]:,.2f} (FY %{customdata[2]}: $%{customdata[1]:,.2f})<extra></extra>"
+            ))
+            fig_ret.update_layout(
+                title_text=f"<b>{company_name} ({ticker}) — Annual Stock Price Return</b>",
+                title_font=dict(size=15, color="#1F497D"),
+                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                yaxis=dict(title="Annual Return (%)", ticksuffix="%", showgrid=True, gridcolor="#EDF2F7", zeroline=True, zerolinecolor="#CBD5E0", zerolinewidth=1.5),
+                template="plotly_white",
+                height=360,
+                margin=dict(l=60, r=40, t=60, b=40)
+            )
+            st.plotly_chart(fig_ret, width="stretch", key=f"{prefix}_{ticker}_annual_ret")
+
+        # Exploratory Correlation Expander
         corr_pairs = []
         for i in range(1, len(analysis_data)):
             p_prev = analysis_data[i-1].get("stock_price")
@@ -770,8 +878,6 @@ if results:
             This exploratory section calculates the Pearson statistical correlation ($r$) between:
             - **Annual Stock-Price Return**: $\\left(\\frac{\\text{Stock Price}_t}{\\text{Stock Price}_{t-1}}\\right) - 1$
             - **Current Fiscal Year MD&A P/N Ratio**: $(\\text{P/N Ratio})_t$
-
-            *Note: The oldest fiscal year in the horizon has no prior baseline year and is excluded from YoY return pairing.*
             """)
 
             if corr_val is not None:
@@ -781,7 +887,6 @@ if results:
                     value=f"{corr_val:+.3f}",
                     help="Pearson correlation coefficient ranging from -1.0 (inverse) to +1.0 (positive)."
                 )
-
                 caution_text = ""
                 if n_obs < 4:
                     caution_text = "\n\n⚠️ *Limited sample — interpret cautiously* ($n < 4$)."
@@ -799,7 +904,6 @@ if results:
             """)
 
             if corr_pairs:
-                st.markdown("**Paired Annual Observations:**")
                 df_corr = pd.DataFrame([
                     {
                         "Fiscal Year": cp["Fiscal Year"],
@@ -811,93 +915,144 @@ if results:
                 ])
                 st.dataframe(df_corr, width="stretch", hide_index=True)
 
-        # Section: Consolidated Data Sources & Methodology (Requirement 6)
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("📖 Data Sources & Methodology", expanded=False):
-            st.markdown("""
-            ### 🏛️ 1. SEC EDGAR Data Source & Filing Retrieval
-            - **Primary Source**: U.S. Securities and Exchange Commission (SEC EDGAR) official submissions API (`https://data.sec.gov/submissions/`).
-            - **Filing Form**: Form 10-K (Annual Reports filed by public entities under Section 13 or 15(d) of the Securities Exchange Act of 1934).
-            - **Entity Lookup**: Official SEC Central Index Key (CIK) mapped directly from the company's exchange ticker symbol.
-            - **Fair Access Compliance**: Declarative User-Agent contact header, polite pacing, and request rate throttling (maximum 10 requests per second) adhering strictly to SEC Fair Access regulations.
+    # --------------------------------------------------------------------------
+    # TAB 3: FINANCIAL STATEMENTS
+    # --------------------------------------------------------------------------
+    with tab_statements:
+        st.subheader("📑 Primary Financial Statements (Item 8)")
+        st.caption("Financial statements extracted from Item 8 of the company's SEC Form 10-K filings.")
 
-            ---
-            ### 📅 2. Fiscal Year & `reportDate` Alignment
-            - **Period End Alignment**: Each filing's financial statements are keyed to the official period-end date (`reportDate` / balance sheet date).
-            - **Multi-Year Comparative Reporting**: Financial statements are aligned chronologically from oldest to newest fiscal year.
-            - **Account Mapping**: Standard U.S. GAAP taxonomy concepts (Revenue, Net Income, Current Assets, Current Liabilities, Total Assets, Total Liabilities) are extracted directly from primary financial statements.
+        # Sub-tabs for financial statements
+        sub_inc, sub_bal, sub_cf = st.tabs(["Income Statement", "Balance Sheet", "Cash Flows"])
 
-            ---
-            ### 📈 3. Stock Price Methodology & Previous-Trading-Day Rule
-            - **Source**: Yahoo Finance via `yfinance`.
-            - **Price Metric**: Historical split-adjusted closing price (`Close`).
-            - **Alignment Rule**: Stock prices are matched to the exact fiscal year-end balance sheet date.
-            - **Non-Trading Day Rule**: When the balance sheet date falls on a weekend or market holiday, the system automatically selects the **most recent previous trading day**. Future trading dates are never used.
+        for stmt_name, sub_tab in [("Income Statement", sub_inc), ("Balance Sheet", sub_bal), ("Cash Flows", sub_cf)]:
+            with sub_tab:
+                stmt_obj = statement_data.get(stmt_name, {})
+                years = stmt_obj.get("years", [])
+                unit = stmt_obj.get("unit", "")
+                items = stmt_obj.get("items", [])
+                values = stmt_obj.get("values", {})
 
-            ---
-            ### 📝 4. Loughran-McDonald Financial Sentiment Scoring
-            - **Source**: University of Notre Dame Software Repository for Accounting and Finance (SRAF), developed by Tim Loughran and Bill McDonald.
-            - **Target Text**: Item 7 — *Management's Discussion and Analysis of Financial Condition and Results of Operations (MD&A)*.
-            - **Text Preprocessing**: Raw HTML/XBRL tags, tables, and scripts are stripped; punctuation and possessive suffixes (`'S`) are normalized; text is tokenized into uppercase alphabetic words without stemming.
-            - **Dictionary Categories**: 8 domain-specific categories (*Positive, Negative, Uncertainty, Litigious, Strong Modal, Weak Modal, Constraining, Complexity*).
-            - **Positive-to-Negative (P/N) Ratio**:
-              $$\\text{P/N Ratio} = \\frac{\\text{Positive Words}}{\\text{Negative Words}}$$
-              *(Protected against division-by-zero: if Negative = 0, returns Positive count if Positive > 0, else 1.0).*
+                if unit:
+                    st.caption(f"**Reporting Scale / Units:** *{unit}*")
 
-            ---
-            ### 🔢 5. Financial Ratio Formulas & Definitions
-            *Standard financial-analysis ratios calculated using U.S. GAAP financial-statement data.*
+                if items and years:
+                    stmt_rows = []
+                    for item in items:
+                        key, label, is_header = item
+                        row_dict = {"Line Item": label.upper() if is_header else f"    {label}"}
+                        row_vals = values.get(key, {})
+                        row_text = f"{key[0]} {label}".lower()
+                        for yr in years:
+                            val = row_vals.get(yr)
+                            if is_header or val is None:
+                                row_dict[yr] = ""
+                            elif "shares" in row_text:
+                                row_dict[yr] = f"{val:,.0f}"
+                            elif "per share" in row_text:
+                                row_dict[yr] = f"${val:,.2f}" if val >= 0 else f"(${-val:,.2f})"
+                            else:
+                                row_dict[yr] = f"${val:,.0f}" if val >= 0 else f"(${-val:,.0f})"
+                        stmt_rows.append(row_dict)
 
-            - **Current Ratio (Liquidity)**:
-              $$\\text{Current Ratio} = \\frac{\\text{Current Assets}}{\\text{Current Liabilities}}$$
-              *Evaluates short-term liquidity and ability to cover immediate liabilities.*
-            - **Debt-to-Assets Ratio (Solvency)**:
-              $$\\text{Debt-to-Assets} = \\frac{\\text{Total Liabilities}}{\\text{Total Assets}}$$
-              *Measures capital structure leverage and the proportion of assets financed by creditors.*
-            - **Total Asset Turnover (Efficiency)**:
-              $$\\text{Total Asset Turnover} = \\frac{\\text{Revenue}}{\\text{Average Total Assets}}$$
-              *Where Average Total Assets is calculated as:*
-              $$\\text{Average Total Assets} = \\frac{\\text{Beginning Total Assets} + \\text{Ending Total Assets}}{2}$$
-              *(Beginning assets are sourced from the comparative prior-year balance sheet).*
-            - **Net Profit Margin (Profitability)**:
-              $$\\text{Net Profit Margin} = \\frac{\\text{Net Income}}{\\text{Revenue}}$$
-              *Measures operational efficiency and bottom-line earnings generated per dollar of revenue.*
-            """)
+                    df_stmt = pd.DataFrame(stmt_rows)
+                    st.dataframe(df_stmt, width="stretch", hide_index=True)
+                else:
+                    st.warning(f"No statement data available for {stmt_name}.")
 
     # --------------------------------------------------------------------------
-    # TAB 2: FINANCIAL RATIOS
+    # TAB 4: 10-YEAR FINANCIAL RATIOS
     # --------------------------------------------------------------------------
     with tab_ratios:
-        st.subheader("Financial Ratios (Oldest to Newest)")
+        st.subheader("📉 10-Year Financial Ratio Trajectories")
+        st.caption(f"Multi-year financial ratio trend visualization for **{company_name}**.")
 
+        chrono_years = [str(r["year"]) for r in analysis_data]
+        cr_series = [r.get("current_ratio") for r in analysis_data]
+        da_series = [(r.get("debt_to_assets") * 100.0) if r.get("debt_to_assets") is not None else None for r in analysis_data]
+        at_series = [r.get("asset_turnover") for r in analysis_data]
+        pm_series = [(r.get("profit_margin") * 100.0) if r.get("profit_margin") is not None else None for r in analysis_data]
+
+        # Four Plotly Trend Charts (2x2 Grid)
+        c_r1, c_r2 = st.columns(2)
+        with c_r1:
+            fig_cr = go.Figure(go.Scatter(
+                x=chrono_years, y=cr_series, mode="lines+markers",
+                line=dict(color="#1F497D", width=2.5), marker=dict(size=7),
+                hovertemplate="FY %{x}<br>Current Ratio: %{y:.2f}<extra></extra>"
+            ))
+            fig_cr.update_layout(
+                title="<b>1. Current Ratio — Liquidity</b>", title_font=dict(size=14, color="#1F497D"),
+                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                yaxis=dict(title="Current Ratio", showgrid=True, gridcolor="#EDF2F7"),
+                template="plotly_white", height=300, margin=dict(l=40, r=20, t=50, b=40)
+            )
+            st.plotly_chart(fig_cr, width="stretch", key=f"{prefix}_{ticker}_cr_trend")
+
+        with c_r2:
+            fig_da = go.Figure(go.Scatter(
+                x=chrono_years, y=da_series, mode="lines+markers",
+                line=dict(color="#C53030", width=2.5), marker=dict(size=7),
+                hovertemplate="FY %{x}<br>Debt-to-Assets: %{y:.2f}%<extra></extra>"
+            ))
+            fig_da.update_layout(
+                title="<b>2. Debt-to-Assets Ratio — Solvency</b>", title_font=dict(size=14, color="#1F497D"),
+                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                yaxis=dict(title="Debt-to-Assets (%)", ticksuffix="%", showgrid=True, gridcolor="#EDF2F7"),
+                template="plotly_white", height=300, margin=dict(l=40, r=20, t=50, b=40)
+            )
+            st.plotly_chart(fig_da, width="stretch", key=f"{prefix}_{ticker}_da_trend")
+
+        c_r3, c_r4 = st.columns(2)
+        with c_r3:
+            fig_at = go.Figure(go.Scatter(
+                x=chrono_years, y=at_series, mode="lines+markers",
+                line=dict(color="#2B6CB0", width=2.5), marker=dict(size=7),
+                hovertemplate="FY %{x}<br>Asset Turnover: %{y:.2f}<extra></extra>"
+            ))
+            fig_at.update_layout(
+                title="<b>3. Total Asset Turnover — Efficiency</b>", title_font=dict(size=14, color="#1F497D"),
+                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                yaxis=dict(title="Asset Turnover", showgrid=True, gridcolor="#EDF2F7"),
+                template="plotly_white", height=300, margin=dict(l=40, r=20, t=50, b=40)
+            )
+            st.plotly_chart(fig_at, width="stretch", key=f"{prefix}_{ticker}_at_trend")
+
+        with c_r4:
+            fig_pm = go.Figure(go.Scatter(
+                x=chrono_years, y=pm_series, mode="lines+markers",
+                line=dict(color="#2F855A", width=2.5), marker=dict(size=7),
+                hovertemplate="FY %{x}<br>Net Profit Margin: %{y:.2f}%<extra></extra>"
+            ))
+            fig_pm.update_layout(
+                title="<b>4. Net Profit Margin — Profitability</b>", title_font=dict(size=14, color="#1F497D"),
+                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                yaxis=dict(title="Net Margin (%)", ticksuffix="%", showgrid=True, gridcolor="#EDF2F7"),
+                template="plotly_white", height=300, margin=dict(l=40, r=20, t=50, b=40)
+            )
+            st.plotly_chart(fig_pm, width="stretch", key=f"{prefix}_{ticker}_pm_trend")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📋 Ratio Calculation Summary Table")
         ratio_table_data = []
         for r in analysis_data:
             ratio_table_data.append({
-                "Fiscal Year": r["year"],
+                "Fiscal Year": f"FY {r['year']}",
                 "Current Ratio (Liquidity)": f"{r['current_ratio']:.2f}" if r["current_ratio"] is not None else "N/A",
                 "Debt-to-Assets Ratio (Solvency)": f"{r['debt_to_assets'] * 100:.2f}%" if r["debt_to_assets"] is not None else "N/A",
                 "Total Asset Turnover (Efficiency)": f"{r['asset_turnover']:.2f}" if r["asset_turnover"] is not None else "N/A",
                 "Net Profit Margin (Profitability)": f"{r['profit_margin'] * 100:.2f}%" if r["profit_margin"] is not None else "N/A"
             })
-
-        df_ratios = pd.DataFrame(ratio_table_data)
-        st.dataframe(df_ratios, width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(ratio_table_data), width="stretch", hide_index=True)
 
         st.markdown("""
         #### 📖 Ratio Formulas & Accounting Definitions
-        - **Current Ratio (Liquidity)**: `Current Assets / Current Liabilities`  
-          *Measures the firm's capacity to settle short-term obligations using liquid assets.*
-        - **Debt-to-Assets Ratio (Solvency)**: `Total Liabilities / Total Assets`  
-          *Measures financial leverage and the fraction of total assets funded by creditors rather than equity.*
-        - **Total Asset Turnover (Efficiency)**: `Revenue / Average Total Assets`  
-          *Measures efficiency in deploying total assets to generate top-line revenue.*
-        - **Average Total Assets**: `(Beginning Total Assets + Ending Total Assets) / 2`  
-          *Utilizes ending assets from the prior comparative period.*
-        - **Net Profit Margin (Profitability)**: `Net Income / Revenue`  
-          *Measures the percentage of each revenue dollar that flows to bottom-line net profit.*
+        - **Current Ratio (Liquidity)**: `Current Assets / Current Liabilities`
+        - **Debt-to-Assets Ratio (Solvency)**: `Total Liabilities / Total Assets`
+        - **Total Asset Turnover (Efficiency)**: `Revenue / Average Total Assets`
+        - **Net Profit Margin (Profitability)**: `Net Income / Revenue`
         """)
 
-        # Underlying Accounts Expander for Audit Verification
         with st.expander("🔍 View Underlying Financial Statement Accounts (Audit Verification)"):
             by_year = raw_accounts_info.get("by_year", {})
             accts_data = []
@@ -905,7 +1060,7 @@ if results:
                 yr = r["year"]
                 item = by_year.get(yr, {})
                 accts_data.append({
-                    "Fiscal Year": yr,
+                    "Fiscal Year": f"FY {yr}",
                     "Revenue": f"${item.get('revenue'):,.0f}" if item.get("revenue") is not None else "N/A",
                     "Net Income": f"${item.get('net_income'):,.0f}" if item.get("net_income") is not None else "N/A",
                     "Current Assets": f"${item.get('current_assets'):,.0f}" if item.get("current_assets") is not None else "N/A",
@@ -918,18 +1073,110 @@ if results:
             st.dataframe(pd.DataFrame(accts_data), width="stretch", hide_index=True)
 
     # --------------------------------------------------------------------------
-    # TAB 3: SENTIMENT ANALYSIS
+    # TAB 5: SENTIMENT ANALYSIS
     # --------------------------------------------------------------------------
     with tab_sentiment:
-        st.subheader("Loughran-McDonald Financial Sentiment Analysis")
-        st.caption("Word counts scored strictly against the official Loughran-McDonald Master Sentiment Dictionary.")
+        st.subheader("📝 Loughran-McDonald Financial Sentiment Analysis")
+        st.caption("Item 7 MD&A narratives scored against the official Loughran-McDonald Master Sentiment Dictionary.")
 
+        chrono_years = [str(r["year"]) for r in analysis_data]
+        pos_words = [r.get("positive", 0) for r in analysis_data]
+        neg_words = [r.get("negative", 0) for r in analysis_data]
+        pn_ratios = [r.get("pn_ratio") for r in analysis_data]
+
+        col_s1, col_s2 = st.columns(2)
+
+        # GRAPH 1: Positive vs Negative Words (Grouped Bar Chart)
+        with col_s1:
+            fig_pn_bars = go.Figure()
+            fig_pn_bars.add_trace(go.Bar(
+                x=chrono_years, y=pos_words, name="Positive Words", marker_color="#2B6CB0",
+                hovertemplate="FY %{x}<br>Positive Words: %{y:,d}<extra></extra>"
+            ))
+            fig_pn_bars.add_trace(go.Bar(
+                x=chrono_years, y=neg_words, name="Negative Words", marker_color="#E4572E",
+                hovertemplate="FY %{x}<br>Negative Words: %{y:,d}<extra></extra>"
+            ))
+            fig_pn_bars.update_layout(
+                title="<b>1. Positive vs. Negative MD&A Word Counts</b>",
+                title_font=dict(size=14, color="#1F497D"),
+                barmode="group",
+                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                yaxis=dict(title="Word Matches", showgrid=True, gridcolor="#EDF2F7"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                template="plotly_white", height=340, margin=dict(l=50, r=20, t=60, b=40)
+            )
+            st.plotly_chart(fig_pn_bars, width="stretch", key=f"{prefix}_{ticker}_pn_bars")
+
+        # GRAPH 2: MD&A Positive-to-Negative Ratio (Line Chart)
+        with col_s2:
+            fig_pn_line = go.Figure()
+            fig_pn_line.add_trace(go.Scatter(
+                x=chrono_years, y=pn_ratios, mode="lines+markers",
+                name="P/N Ratio", line=dict(color="#1F497D", width=2.5), marker=dict(size=8, symbol="diamond"),
+                hovertemplate="FY %{x}<br>P/N Ratio: %{y:.2f}<extra></extra>"
+            ))
+            # Horizontal baseline at P/N = 1.0
+            fig_pn_line.add_hline(
+                y=1.0, line_dash="dash", line_color="#A0AEC0", line_width=1.5,
+                annotation_text="P/N = 1.0 (Neutral Baseline)", annotation_position="top right"
+            )
+            fig_pn_line.update_layout(
+                title="<b>2. MD&A Positive-to-Negative Ratio</b>",
+                title_font=dict(size=14, color="#1F497D"),
+                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                yaxis=dict(title="P/N Ratio", showgrid=True, gridcolor="#EDF2F7", tickformat=".2f"),
+                template="plotly_white", height=340, margin=dict(l=50, r=20, t=60, b=40)
+            )
+            st.plotly_chart(fig_pn_line, width="stretch", key=f"{prefix}_{ticker}_pn_line")
+
+        st.info("""
+        **P/N Ratio Interpretation**:  
+        - **P/N > 1**: Positive Loughran-McDonald word matches exceeded negative matches.  
+        - **P/N < 1**: Negative word matches exceeded positive matches.  
+        - **Formula**: `Positive Words / Negative Words`
+        """)
+
+        # GRAPH 3: Other Sentiment Category Trends
         other_cats = [c for c in available_cats if c not in ("Positive", "Negative")]
+        if other_cats:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.subheader("3. Other Sentiment Category Trends")
+            selected_other_cats = st.multiselect(
+                "Select sentiment categories to plot:",
+                options=other_cats,
+                default=other_cats[:4] if len(other_cats) >= 4 else other_cats,
+                key=f"{prefix}_{ticker}_other_sent_select"
+            )
 
+            if selected_other_cats:
+                fig_other = go.Figure()
+                palette = ["#4A5568", "#D69E2E", "#805AD5", "#DD6B20", "#319795", "#E53E3E"]
+                for idx, cat in enumerate(selected_other_cats):
+                    cat_series = [r["other_sentiment"].get(cat, 0) for r in analysis_data]
+                    fig_other.add_trace(go.Scatter(
+                        x=chrono_years, y=cat_series, mode="lines+markers",
+                        name=cat, line=dict(color=palette[idx % len(palette)], width=2),
+                        marker=dict(size=6),
+                        hovertemplate=f"FY %{{x}}<br>{cat}: %{{y:,d}}<extra></extra>"
+                    ))
+                fig_other.update_layout(
+                    title="<b>Loughran-McDonald Domain-Specific Sentiment Word Trajectories</b>",
+                    title_font=dict(size=14, color="#1F497D"),
+                    xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                    yaxis=dict(title="Word Matches", showgrid=True, gridcolor="#EDF2F7"),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    template="plotly_white", height=340, margin=dict(l=50, r=20, t=60, b=40)
+                )
+                st.plotly_chart(fig_other, width="stretch", key=f"{prefix}_{ticker}_other_cats")
+
+        # Full Sentiment Table
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📋 Complete Loughran-McDonald Sentiment Score Table")
         sent_table_data = []
         for r in analysis_data:
             row_dict = {
-                "Fiscal Year": r["year"],
+                "Fiscal Year": f"FY {r['year']}",
                 "Total Words": f"{r['total_words']:,d}" if r["total_words"] is not None else "N/A",
                 "Positive": f"{r['positive']:,d}" if r["positive"] is not None else "N/A",
                 "Negative": f"{r['negative']:,d}" if r["negative"] is not None else "N/A"
@@ -940,113 +1187,141 @@ if results:
             row_dict["P/N Ratio"] = f"{r['pn_ratio']:.2f}" if r["pn_ratio"] is not None else "N/A"
             sent_table_data.append(row_dict)
 
-        df_sentiment = pd.DataFrame(sent_table_data)
-        st.dataframe(df_sentiment, width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(sent_table_data), width="stretch", hide_index=True)
 
         dict_word_count = results.get("dict_info", {}).get("total_words", 0)
-        st.markdown(f"""
-        **About the Sentiment Metrics**:
-        - **Dictionary**: Loughran-McDonald Master Financial Sentiment Dictionary ({dict_word_count:,d} words).
-        - **P/N Ratio**: `Positive Words / Negative Words`.
-        - **Interpretation**: P/N > 1 means positive Loughran-McDonald word matches exceeded negative word matches. P/N < 1 means negative word matches exceeded positive word matches.
-        """)
+        st.caption(f"Dictionary Indexed: Loughran-McDonald Master Sentiment Dictionary ({dict_word_count:,d} words).")
 
     # --------------------------------------------------------------------------
-    # TAB 4: STOCK PRICES
+    # TAB 6: GROWTH & PERFORMANCE
     # --------------------------------------------------------------------------
-    with tab_stock:
-        st.subheader("Historical Stock Prices (Yahoo Finance)")
-        st.caption("Split-adjusted closing prices matched to official SEC balance sheet dates.")
+    with tab_growth:
+        st.subheader("📊 Long-Term Revenue & Earnings Growth")
+        by_year = raw_accounts_info.get("by_year", {})
+        stmt_unit = statement_data.get("Income Statement", {}).get("unit", "")
+        if stmt_unit:
+            st.caption(f"**Financial Statement Scale / Currency:** *{stmt_unit}*")
 
-        # Sort stock_price_results chronologically for presentation
-        chrono_stock = sorted(stock_price_results, key=lambda x: str(x["year"]))
-        stock_table = []
-        for s in chrono_stock:
-            stock_table.append({
-                "Fiscal Year": s["year"],
-                "Balance Sheet Date": s["bs_date"],
-                "Trading Date Used": s["trading_date"],
-                "Stock Price": f"${s['price']:,.2f}" if s["price"] is not None else "N/A",
-                "Date Adjustment": s.get("adjustment", "Exact Date"),
-                "Status": s.get("status", "Retrieved")
-            })
+        growth_years = []
+        rev_vals = []
+        ni_vals = []
+        for r in analysis_data:
+            yr = r["year"]
+            item = by_year.get(yr, {})
+            rev = item.get("revenue")
+            ni = item.get("net_income")
+            if rev is not None and ni is not None:
+                growth_years.append(f"FY {yr}")
+                rev_vals.append(rev)
+                ni_vals.append(ni)
 
-        df_stock = pd.DataFrame(stock_table)
-        st.dataframe(df_stock, width="stretch", hide_index=True)
+        col_g1, col_g2 = st.columns(2)
 
-        st.info("""
-        **Trading Day Methodology**:
-        - **Source**: Yahoo Finance via `yfinance`.
-        - **Prices**: Split-adjusted closing stock price (`Close`).
-        - **Non-Trading Days**: When the fiscal year-end balance sheet date fell on a weekend or market holiday, the most recent previous trading day was automatically selected. Future trading dates are never used.
-        """)
+        # GRAPH 1: Revenue vs Net Income
+        with col_g1:
+            fig_rev_ni = go.Figure()
+            fig_rev_ni.add_trace(go.Bar(
+                x=growth_years, y=rev_vals, name="Revenue", marker_color="#1F497D",
+                hovertemplate="<b>%{x}</b><br>Revenue: $%{y:,.0f}<extra></extra>"
+            ))
+            fig_rev_ni.add_trace(go.Bar(
+                x=growth_years, y=ni_vals, name="Net Income", marker_color="#2F855A",
+                hovertemplate="<b>%{x}</b><br>Net Income: $%{y:,.0f}<extra></extra>"
+            ))
+            fig_rev_ni.update_layout(
+                title="<b>1. Revenue vs. Net Income Comparison</b>",
+                title_font=dict(size=14, color="#1F497D"),
+                barmode="group",
+                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                yaxis=dict(title=f"Amount ({stmt_unit})" if stmt_unit else "Amount ($)", showgrid=True, gridcolor="#EDF2F7"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                template="plotly_white", height=350, margin=dict(l=50, r=20, t=60, b=40)
+            )
+            st.plotly_chart(fig_rev_ni, width="stretch", key=f"{prefix}_{ticker}_rev_ni")
 
-    # --------------------------------------------------------------------------
-    # TAB 5: FINANCIAL STATEMENTS
-    # --------------------------------------------------------------------------
-    with tab_statements:
-        st.subheader("Primary Financial Statements (Item 8)")
-        st.caption("Extracted multi-year financial statements aligned across fiscal periods.")
+        # GRAPH 2: Year-over-Year Revenue Growth Trend (%)
+        with col_g2:
+            rev_yoy_years = []
+            rev_yoy_vals = []
+            for i in range(1, len(rev_vals)):
+                r_p = rev_vals[i-1]
+                r_c = rev_vals[i]
+                if r_p and r_p > 0:
+                    yoy = ((r_c / r_p) - 1.0) * 100.0
+                    rev_yoy_years.append(growth_years[i])
+                    rev_yoy_vals.append(yoy)
 
-        stmt_selector = st.radio(
-            "Select Statement to View:",
-            options=["Income Statement", "Balance Sheet", "Cash Flows"],
-            horizontal=True
+            if rev_yoy_years:
+                yoy_colors = ["#2B6CB0" if v >= 0 else "#C53030" for v in rev_yoy_vals]
+                fig_rev_growth = go.Figure(go.Bar(
+                    x=rev_yoy_years, y=rev_yoy_vals, marker_color=yoy_colors,
+                    hovertemplate="<b>%{x}</b><br>YoY Revenue Growth: %{y:+.2f}%<extra></extra>"
+                ))
+                fig_rev_growth.update_layout(
+                    title="<b>2. YoY Revenue Growth Trend (%)</b>",
+                    title_font=dict(size=14, color="#1F497D"),
+                    xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                    yaxis=dict(title="Revenue Growth (%)", ticksuffix="%", showgrid=True, gridcolor="#EDF2F7", zeroline=True, zerolinecolor="#CBD5E0"),
+                    template="plotly_white", height=350, margin=dict(l=50, r=20, t=60, b=40)
+                )
+                st.plotly_chart(fig_rev_growth, width="stretch", key=f"{prefix}_{ticker}_rev_growth")
+
+        # GRAPH 3: Net Income Trend
+        st.markdown("<br>", unsafe_allow_html=True)
+        fig_ni_trend = go.Figure(go.Scatter(
+            x=growth_years, y=ni_vals, mode="lines+markers",
+            line=dict(color="#2F855A", width=3), marker=dict(size=8, symbol="diamond"),
+            hovertemplate="<b>%{x}</b><br>Net Income: $%{y:,.0f}<extra></extra>"
+        ))
+        fig_ni_trend.update_layout(
+            title=f"<b>3. Net Income Trajectory ({stmt_unit})</b>" if stmt_unit else "<b>3. Net Income Trajectory</b>",
+            title_font=dict(size=14, color="#1F497D"),
+            xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+            yaxis=dict(title=f"Net Income ({stmt_unit})" if stmt_unit else "Net Income ($)", showgrid=True, gridcolor="#EDF2F7"),
+            template="plotly_white", height=320, margin=dict(l=50, r=20, t=50, b=40)
         )
+        st.plotly_chart(fig_ni_trend, width="stretch", key=f"{prefix}_{ticker}_ni_trend")
 
-        stmt_obj = statement_data.get(stmt_selector, {})
-        years = stmt_obj.get("years", [])
-        unit = stmt_obj.get("unit", "")
-        items = stmt_obj.get("items", [])
-        values = stmt_obj.get("values", {})
+        # Operating Summary Table
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📋 Operating Performance Summary")
+        growth_table_rows = []
+        for i, yr_label in enumerate(growth_years):
+            rev_c = rev_vals[i]
+            ni_c = ni_vals[i]
+            if i > 0 and rev_vals[i-1] > 0:
+                yoy_rev_str = f"{((rev_c / rev_vals[i-1]) - 1.0) * 100.0:+.2f}%"
+            else:
+                yoy_rev_str = "Baseline"
+            if i > 0 and ni_vals[i-1] != 0:
+                yoy_ni_str = f"{((ni_c / abs(ni_vals[i-1])) - 1.0) * 100.0:+.2f}%"
+            else:
+                yoy_ni_str = "Baseline"
 
-        if unit:
-            st.caption(f"**Reporting Scale / Units:** *{unit}*")
-
-        if items and years:
-            stmt_rows = []
-            for item in items:
-                key, label, is_header = item
-                # Dataframes do not render Markdown, so headers are shown in capitals
-                row_dict = {"Line Item": label.upper() if is_header else f"    {label}"}
-                row_vals = values.get(key, {})
-                row_text = f"{key[0]} {label}".lower()
-                for yr in years:
-                    val = row_vals.get(yr)
-                    if is_header or val is None:
-                        row_dict[yr] = ""
-                    elif "shares" in row_text:
-                        # Share counts (e.g. 'Shares used in computing earnings
-                        # per share') are not dollar amounts
-                        row_dict[yr] = f"{val:,.0f}"
-                    elif "per share" in row_text:
-                        # Earnings / dividends per share keep their cents
-                        row_dict[yr] = f"${val:,.2f}" if val >= 0 else f"(${-val:,.2f})"
-                    else:
-                        # Accounting style: negatives in parentheses
-                        row_dict[yr] = f"${val:,.0f}" if val >= 0 else f"(${-val:,.0f})"
-                stmt_rows.append(row_dict)
-
-            df_stmt = pd.DataFrame(stmt_rows)
-            st.dataframe(df_stmt, width="stretch", hide_index=True)
-        else:
-            st.warning(f"No statement data available for {stmt_selector}.")
+            growth_table_rows.append({
+                "Fiscal Year": yr_label,
+                "Revenue": f"${rev_c:,.0f}",
+                "YoY Revenue Growth": yoy_rev_str,
+                "Net Income": f"${ni_c:,.0f}",
+                "YoY Net Income Growth": yoy_ni_str
+            })
+        st.dataframe(pd.DataFrame(growth_table_rows), width="stretch", hide_index=True)
 
     # --------------------------------------------------------------------------
-    # TAB 6: DOWNLOAD REPORT
+    # TAB 7: DOWNLOAD REPORT
     # --------------------------------------------------------------------------
     with tab_download:
         st.subheader("📥 Download Master Financial Analysis Workbook")
         st.markdown(f"""
-        Download the full Excel analysis workbook generated by the backend:
-        - **File Name:** `{Path(output_filepath).name}`
+        Download the verified multi-worksheet Excel financial analysis workbook for **{company_name}**:
+        - **Workbook File Name:** `{Path(output_filepath).name}`
         - **Worksheets Included:**
-          1. `Income Statement` (Multi-year operations)
-          2. `Balance Sheet` (Multi-year assets, liabilities, and equity)
-          3. `Cash Flows` (Operating, investing, and financing flows)
+          1. `Income Statement` (Multi-year operational results)
+          2. `Balance Sheet` (Multi-year assets, liabilities, and shareholders' equity)
+          3. `Cash Flows` (Operating, investing, and financing cash flows)
           4. `Sentiment Analysis` (Loughran-McDonald category counts and P/N ratios)
-          5. `Stock Prices` (Historical split-adjusted prices matched to balance sheet dates)
-          6. `Analysis` (Chronological ratios, formula documentation, and dual-axis line chart)
+          5. `Stock Prices` (Historical split-adjusted closing prices matched to balance sheet dates)
+          6. `Analysis` (Chronological financial ratios, formula documentation, and dual-axis chart)
         """)
 
         if Path(output_filepath).exists():
@@ -1054,24 +1329,454 @@ if results:
                 excel_bytes = f.read()
 
             st.download_button(
-                label="📥 Download Excel Analysis (.xlsx)",
+                label=f"📥 Download {Path(output_filepath).name}",
                 data=excel_bytes,
                 file_name=Path(output_filepath).name,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
-                width="stretch"
+                width="stretch",
+                key=f"{prefix}_{ticker}_dl_btn"
             )
-            st.success("Workbook is ready for download.")
+            st.success("Master workbook is ready for immediate download.")
         else:
             st.error(f"Workbook file '{output_filepath}' not found on disk.")
 
-else:
-    # Friendly status notice when selected company has not been analyzed yet (Requirement 4)
-    if active_ticker == "AAPL":
-        company_label = "Apple Inc. (AAPL)"
-    elif active_ticker == "TSLA":
-        company_label = "Tesla, Inc. (TSLA)"
-    else:
-        company_label = f"Company '{active_ticker}'"
 
-    st.info(f"💡 **{company_label}** has not been analyzed in this session yet. Click **🚀 Run Analysis** in the sidebar to generate the report.")
+# ==============================================================================
+# RENDER APPLE VS. TESLA COMPARISON DASHBOARD
+# ==============================================================================
+
+def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count):
+    aapl_data = aapl_results["analysis_data"]
+    tsla_data = tsla_results["analysis_data"]
+    aapl_by_year = aapl_results["raw_accounts_info"].get("by_year", {})
+    tsla_by_year = tsla_results["raw_accounts_info"].get("by_year", {})
+
+    aapl_latest = aapl_data[-1]
+    tsla_latest = tsla_data[-1]
+
+    # Find common / aligned fiscal years
+    aapl_years = [r["year"] for r in aapl_data]
+    tsla_years = [r["year"] for r in tsla_data]
+    common_years = sorted(list(set(aapl_years).intersection(tsla_years)))
+    if not common_years:
+        common_years = sorted(list(set(aapl_years).union(tsla_years)))
+
+    aapl_dict = {r["year"]: r for r in aapl_data}
+    tsla_dict = {r["year"]: r for r in tsla_data}
+
+    # Comparison Header
+    st.markdown(f"""
+    <div class="company-header-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.85rem;">
+            <div>
+                <div style="font-size: 1.7rem; font-weight: 700; color: #1F497D; line-height: 1.25;">
+                    🍎 Apple Inc. (AAPL) <span style="font-size: 1.2rem; color: #718096; font-weight: 400;">vs.</span> ⚡ Tesla, Inc. (TSLA)
+                </div>
+                <div style="font-size: 0.92rem; color: #4A5568; margin-top: 0.35rem; line-height: 1.4;">
+                    Comparative Executive Financial & Sentiment Dashboard &nbsp;•&nbsp; Horizon: <b>{target_filing_count} Comparable Fiscal Years</b>
+                </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                <span class="company-badge">🍎 AAPL: CIK {str(aapl_results['cik']).zfill(10)}</span>
+                <span class="company-badge-secondary">⚡ TSLA: CIK {str(tsla_results['cik']).zfill(10)}</span>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Side-by-Side Latest-Year KPI Cards
+    st.subheader("📌 Latest Fiscal-Year Side-by-Side Comparison")
+    st.caption("Neutral comparative summary of latest reported accounting health, market price, and MD&A sentiment metrics.")
+
+    k_c1, k_c2, k_c3 = st.columns(3)
+    k_c4, k_c5, k_c6 = st.columns(3)
+
+    # 1. Stock Price
+    aapl_p = f"${aapl_latest['stock_price']:,.2f}" if aapl_latest.get("stock_price") is not None else "N/A"
+    tsla_p = f"${tsla_latest['stock_price']:,.2f}" if tsla_latest.get("stock_price") is not None else "N/A"
+    k_c1.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-category">Market Value</div>
+        <div class="metric-name">Stock Price</div>
+        <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
+            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_p}</b></div>
+            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_p}</b></div>
+        </div>
+        <div class="metric-sub">FY {aapl_latest['year']} / FY {tsla_latest['year']} Balance Sheet Date</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 2. Current Ratio
+    aapl_cr = f"{aapl_latest['current_ratio']:.2f}" if aapl_latest.get("current_ratio") is not None else "N/A"
+    tsla_cr = f"{tsla_latest['current_ratio']:.2f}" if tsla_latest.get("current_ratio") is not None else "N/A"
+    k_c2.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-category">Liquidity</div>
+        <div class="metric-name">Current Ratio</div>
+        <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
+            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_cr}</b></div>
+            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_cr}</b></div>
+        </div>
+        <div class="metric-sub">Current Assets / Current Liabilities</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 3. Debt-to-Assets
+    aapl_da = f"{aapl_latest['debt_to_assets'] * 100:.2f}%" if aapl_latest.get("debt_to_assets") is not None else "N/A"
+    tsla_da = f"{tsla_latest['debt_to_assets'] * 100:.2f}%" if tsla_latest.get("debt_to_assets") is not None else "N/A"
+    k_c3.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-category">Solvency</div>
+        <div class="metric-name">Debt-to-Assets</div>
+        <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
+            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_da}</b></div>
+            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_da}</b></div>
+        </div>
+        <div class="metric-sub">Total Liabilities / Total Assets</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 4. Total Asset Turnover
+    aapl_at = f"{aapl_latest['asset_turnover']:.2f}" if aapl_latest.get("asset_turnover") is not None else "N/A"
+    tsla_at = f"{tsla_latest['asset_turnover']:.2f}" if tsla_latest.get("asset_turnover") is not None else "N/A"
+    k_c4.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-category">Efficiency</div>
+        <div class="metric-name">Asset Turnover</div>
+        <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
+            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_at}</b></div>
+            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_at}</b></div>
+        </div>
+        <div class="metric-sub">Revenue / Average Assets</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 5. Net Profit Margin
+    aapl_pm = f"{aapl_latest['profit_margin'] * 100:.2f}%" if aapl_latest.get("profit_margin") is not None else "N/A"
+    tsla_pm = f"{tsla_latest['profit_margin'] * 100:.2f}%" if tsla_latest.get("profit_margin") is not None else "N/A"
+    k_c5.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-category">Profitability</div>
+        <div class="metric-name">Net Margin</div>
+        <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
+            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_pm}</b></div>
+            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_pm}</b></div>
+        </div>
+        <div class="metric-sub">Net Income / Revenue</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 6. MD&A P/N Ratio
+    aapl_pn = f"{aapl_latest['pn_ratio']:.2f}" if aapl_latest.get("pn_ratio") is not None else "N/A"
+    tsla_pn = f"{tsla_latest['pn_ratio']:.2f}" if tsla_latest.get("pn_ratio") is not None else "N/A"
+    k_c6.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-category">MD&A Sentiment</div>
+        <div class="metric-name">P/N Ratio</div>
+        <div style="display:flex; justify-content:space-around; align-items:baseline; margin-top:0.4rem;">
+            <div><span style="font-size:0.82rem; color:#1F497D; font-weight:600;">AAPL:</span> <b style="font-size:1.25rem; color:#1F497D;">{aapl_pn}</b></div>
+            <div><span style="font-size:0.82rem; color:#E4572E; font-weight:600;">TSLA:</span> <b style="font-size:1.25rem; color:#E4572E;">{tsla_pn}</b></div>
+        </div>
+        <div class="metric-sub">Positive Words / Negative Words</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # COMPARISON GRAPH 1: Normalized Stock Performance
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("1. Indexed Stock Performance — Base Year = 100")
+    st.caption("Normalized historical stock price trajectory indexing the initial comparative fiscal year to 100. Eliminates nominal share price differences.")
+
+    chart_years = [str(yr) for yr in common_years]
+    aapl_p0 = aapl_dict.get(common_years[0], {}).get("stock_price")
+    tsla_p0 = tsla_dict.get(common_years[0], {}).get("stock_price")
+
+    aapl_stock_idx = []
+    tsla_stock_idx = []
+    for yr in common_years:
+        ap = aapl_dict.get(yr, {}).get("stock_price")
+        tp = tsla_dict.get(yr, {}).get("stock_price")
+        aapl_stock_idx.append(((ap / aapl_p0) * 100.0) if ap and aapl_p0 and aapl_p0 > 0 else None)
+        tsla_stock_idx.append(((tp / tsla_p0) * 100.0) if tp and tsla_p0 and tsla_p0 > 0 else None)
+
+    fig_idx_stock = go.Figure()
+    fig_idx_stock.add_trace(go.Scatter(
+        x=chart_years, y=aapl_stock_idx, mode="lines+markers",
+        name="Apple (AAPL)", line=dict(color="#1F497D", width=3), marker=dict(size=8, symbol="circle"),
+        hovertemplate="<b>AAPL (FY %{x})</b><br>Index: %{y:.1f}<extra></extra>"
+    ))
+    fig_idx_stock.add_trace(go.Scatter(
+        x=chart_years, y=tsla_stock_idx, mode="lines+markers",
+        name="Tesla (TSLA)", line=dict(color="#E4572E", width=3), marker=dict(size=8, symbol="diamond"),
+        hovertemplate="<b>TSLA (FY %{x})</b><br>Index: %{y:.1f}<extra></extra>"
+    ))
+    fig_idx_stock.add_hline(y=100.0, line_dash="dash", line_color="#A0AEC0", annotation_text="Base Year = 100")
+    fig_idx_stock.update_layout(
+        title="<b>Indexed Stock Performance — Base Year = 100</b>",
+        title_font=dict(size=15, color="#1F497D"),
+        xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+        yaxis=dict(title="Indexed Performance (Base=100)", showgrid=True, gridcolor="#EDF2F7"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        template="plotly_white", height=400, margin=dict(l=50, r=20, t=60, b=40)
+    )
+    st.plotly_chart(fig_idx_stock, width="stretch", key="comp_chart_idx_stock")
+
+    # COMPARISON GRAPH 2: MD&A Sentiment Comparison
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("2. MD&A Sentiment P/N Ratio Comparison")
+    st.caption("Comparative tone analysis of Item 7 MD&A filings across identical fiscal years.")
+
+    aapl_pn_series = [aapl_dict.get(yr, {}).get("pn_ratio") for yr in common_years]
+    tsla_pn_series = [tsla_dict.get(yr, {}).get("pn_ratio") for yr in common_years]
+
+    fig_pn_comp = go.Figure()
+    fig_pn_comp.add_trace(go.Scatter(
+        x=chart_years, y=aapl_pn_series, mode="lines+markers",
+        name="Apple P/N Ratio", line=dict(color="#1F497D", width=2.5), marker=dict(size=8, symbol="circle"),
+        hovertemplate="<b>AAPL (FY %{x})</b><br>P/N Ratio: %{y:.2f}<extra></extra>"
+    ))
+    fig_pn_comp.add_trace(go.Scatter(
+        x=chart_years, y=tsla_pn_series, mode="lines+markers",
+        name="Tesla P/N Ratio", line=dict(color="#E4572E", width=2.5), marker=dict(size=8, symbol="diamond"),
+        hovertemplate="<b>TSLA (FY %{x})</b><br>P/N Ratio: %{y:.2f}<extra></extra>"
+    ))
+    fig_pn_comp.add_hline(y=1.0, line_dash="dash", line_color="#A0AEC0", annotation_text="P/N = 1.0 (Neutral Baseline)")
+    fig_pn_comp.update_layout(
+        title="<b>MD&A Sentiment P/N Ratio Comparison</b>",
+        title_font=dict(size=15, color="#1F497D"),
+        xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+        yaxis=dict(title="P/N Ratio", showgrid=True, gridcolor="#EDF2F7", tickformat=".2f"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        template="plotly_white", height=380, margin=dict(l=50, r=20, t=60, b=40)
+    )
+    st.plotly_chart(fig_pn_comp, width="stretch", key="comp_chart_pn_line")
+
+    # COMPARISON GRAPH 3: Financial Ratio Comparison
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("3. Financial Ratio Comparison")
+    st.caption("Select a key financial ratio dimension to view Apple and Tesla trajectories on the same chart:")
+
+    ratio_choice = st.selectbox(
+        "Select Ratio Dimension:",
+        options=[
+            "Current Ratio (Liquidity)",
+            "Debt-to-Assets Ratio (Solvency)",
+            "Total Asset Turnover (Efficiency)",
+            "Net Profit Margin (Profitability)"
+        ],
+        key="comp_ratio_selector"
+    )
+
+    if ratio_choice == "Current Ratio (Liquidity)":
+        aapl_r_vals = [aapl_dict.get(yr, {}).get("current_ratio") for yr in common_years]
+        tsla_r_vals = [tsla_dict.get(yr, {}).get("current_ratio") for yr in common_years]
+        y_title = "Current Ratio"
+        y_fmt = ".2f"
+        val_hover = "%{y:.2f}"
+    elif ratio_choice == "Debt-to-Assets Ratio (Solvency)":
+        aapl_r_vals = [(aapl_dict.get(yr, {}).get("debt_to_assets") * 100.0) if aapl_dict.get(yr, {}).get("debt_to_assets") is not None else None for yr in common_years]
+        tsla_r_vals = [(tsla_dict.get(yr, {}).get("debt_to_assets") * 100.0) if tsla_dict.get(yr, {}).get("debt_to_assets") is not None else None for yr in common_years]
+        y_title = "Debt-to-Assets (%)"
+        y_fmt = ".1f"
+        val_hover = "%{y:.2f}%"
+    elif ratio_choice == "Total Asset Turnover (Efficiency)":
+        aapl_r_vals = [aapl_dict.get(yr, {}).get("asset_turnover") for yr in common_years]
+        tsla_r_vals = [tsla_dict.get(yr, {}).get("asset_turnover") for yr in common_years]
+        y_title = "Asset Turnover"
+        y_fmt = ".2f"
+        val_hover = "%{y:.2f}"
+    else:  # Net Profit Margin
+        aapl_r_vals = [(aapl_dict.get(yr, {}).get("profit_margin") * 100.0) if aapl_dict.get(yr, {}).get("profit_margin") is not None else None for yr in common_years]
+        tsla_r_vals = [(tsla_dict.get(yr, {}).get("profit_margin") * 100.0) if tsla_dict.get(yr, {}).get("profit_margin") is not None else None for yr in common_years]
+        y_title = "Net Margin (%)"
+        y_fmt = ".1f"
+        val_hover = "%{y:.2f}%"
+
+    fig_ratio_comp = go.Figure()
+    fig_ratio_comp.add_trace(go.Scatter(
+        x=chart_years, y=aapl_r_vals, mode="lines+markers",
+        name="Apple (AAPL)", line=dict(color="#1F497D", width=2.5), marker=dict(size=8, symbol="circle"),
+        hovertemplate=f"<b>AAPL (FY %{{x}})</b><br>{ratio_choice}: {val_hover}<extra></extra>"
+    ))
+    fig_ratio_comp.add_trace(go.Scatter(
+        x=chart_years, y=tsla_r_vals, mode="lines+markers",
+        name="Tesla (TSLA)", line=dict(color="#E4572E", width=2.5), marker=dict(size=8, symbol="diamond"),
+        hovertemplate=f"<b>TSLA (FY %{{x}})</b><br>{ratio_choice}: {val_hover}<extra></extra>"
+    ))
+    fig_ratio_comp.update_layout(
+        title=f"<b>{ratio_choice} — Apple vs. Tesla</b>",
+        title_font=dict(size=15, color="#1F497D"),
+        xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+        yaxis=dict(title=y_title, showgrid=True, gridcolor="#EDF2F7"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        template="plotly_white", height=380, margin=dict(l=50, r=20, t=60, b=40)
+    )
+    st.plotly_chart(fig_ratio_comp, width="stretch", key="comp_chart_ratio_line")
+
+    # COMPARISON GRAPH 4: Revenue Growth Index
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("4. Indexed Revenue Growth — Base Year = 100")
+    st.caption("Normalized top-line revenue expansion indexing the initial comparative period to 100. Enables clear growth rate comparison regardless of scale.")
+
+    aapl_r0 = aapl_by_year.get(common_years[0], {}).get("revenue")
+    tsla_r0 = tsla_by_year.get(common_years[0], {}).get("revenue")
+
+    aapl_rev_idx = []
+    tsla_rev_idx = []
+    for yr in common_years:
+        ar = aapl_by_year.get(yr, {}).get("revenue")
+        tr = tsla_by_year.get(yr, {}).get("revenue")
+        aapl_rev_idx.append(((ar / aapl_r0) * 100.0) if ar and aapl_r0 and aapl_r0 > 0 else None)
+        tsla_rev_idx.append(((tr / tsla_r0) * 100.0) if tr and tsla_r0 and tsla_r0 > 0 else None)
+
+    fig_idx_rev = go.Figure()
+    fig_idx_rev.add_trace(go.Scatter(
+        x=chart_years, y=aapl_rev_idx, mode="lines+markers",
+        name="Apple Revenue Index", line=dict(color="#1F497D", width=3), marker=dict(size=8, symbol="circle"),
+        hovertemplate="<b>AAPL Revenue Index (FY %{x})</b><br>Index: %{y:.1f}<extra></extra>"
+    ))
+    fig_idx_rev.add_trace(go.Scatter(
+        x=chart_years, y=tsla_rev_idx, mode="lines+markers",
+        name="Tesla Revenue Index", line=dict(color="#E4572E", width=3), marker=dict(size=8, symbol="diamond"),
+        hovertemplate="<b>TSLA Revenue Index (FY %{x})</b><br>Index: %{y:.1f}<extra></extra>"
+    ))
+    fig_idx_rev.add_hline(y=100.0, line_dash="dash", line_color="#A0AEC0", annotation_text="Base Year = 100")
+    fig_idx_rev.update_layout(
+        title="<b>Indexed Revenue Growth — Base Year = 100</b>",
+        title_font=dict(size=15, color="#1F497D"),
+        xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
+        yaxis=dict(title="Indexed Revenue (Base=100)", showgrid=True, gridcolor="#EDF2F7"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        template="plotly_white", height=400, margin=dict(l=50, r=20, t=60, b=40)
+    )
+    st.plotly_chart(fig_idx_rev, width="stretch", key="comp_chart_idx_rev")
+
+    # CROSS-COMPANY SUMMARY TABLE
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("📋 Cross-Company Chronological Summary Table")
+    st.caption("Comprehensive chronological table comparing Apple and Tesla across stock prices, ratios, and sentiment scores (oldest to newest):")
+
+    comp_rows = []
+    for yr in common_years:
+        ar = aapl_dict.get(yr)
+        tr = tsla_dict.get(yr)
+        comp_rows.append({
+            "Fiscal Year": f"FY {yr}",
+            "AAPL Stock Price": f"${ar['stock_price']:,.2f}" if ar and ar.get("stock_price") is not None else "N/A",
+            "TSLA Stock Price": f"${tr['stock_price']:,.2f}" if tr and tr.get("stock_price") is not None else "N/A",
+            "AAPL Current Ratio": f"{ar['current_ratio']:.2f}" if ar and ar.get("current_ratio") is not None else "N/A",
+            "TSLA Current Ratio": f"{tr['current_ratio']:.2f}" if tr and tr.get("current_ratio") is not None else "N/A",
+            "AAPL Debt-to-Assets": f"{ar['debt_to_assets'] * 100:.2f}%" if ar and ar.get("debt_to_assets") is not None else "N/A",
+            "TSLA Debt-to-Assets": f"{tr['debt_to_assets'] * 100:.2f}%" if tr and tr.get("debt_to_assets") is not None else "N/A",
+            "AAPL Asset Turnover": f"{ar['asset_turnover']:.2f}" if ar and ar.get("asset_turnover") is not None else "N/A",
+            "TSLA Asset Turnover": f"{tr['asset_turnover']:.2f}" if tr and tr.get("asset_turnover") is not None else "N/A",
+            "AAPL Net Profit Margin": f"{ar['profit_margin'] * 100:.2f}%" if ar and ar.get("profit_margin") is not None else "N/A",
+            "TSLA Net Profit Margin": f"{tr['profit_margin'] * 100:.2f}%" if tr and tr.get("profit_margin") is not None else "N/A",
+            "AAPL P/N Ratio": f"{ar['pn_ratio']:.2f}" if ar and ar.get("pn_ratio") is not None else "N/A",
+            "TSLA P/N Ratio": f"{tr['pn_ratio']:.2f}" if tr and tr.get("pn_ratio") is not None else "N/A",
+        })
+    st.dataframe(pd.DataFrame(comp_rows), width="stretch", hide_index=True)
+
+    # WORKBOOK DOWNLOADS
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("📥 Download Analysis Workbooks")
+    st.caption("Download the individual verified Excel workbooks generated for each company:")
+
+    dl_c1, dl_c2 = st.columns(2)
+    aapl_wb = aapl_results.get("output_filepath")
+    tsla_wb = tsla_results.get("output_filepath")
+
+    with dl_c1:
+        if aapl_wb and Path(aapl_wb).exists():
+            with open(aapl_wb, "rb") as f:
+                b_aapl = f.read()
+            st.download_button(
+                label=f"📥 Download Apple Workbook ({Path(aapl_wb).name})",
+                data=b_aapl,
+                file_name=Path(aapl_wb).name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                width="stretch",
+                key="dl_comp_aapl"
+            )
+
+    with dl_c2:
+        if tsla_wb and Path(tsla_wb).exists():
+            with open(tsla_wb, "rb") as f:
+                b_tsla = f.read()
+            st.download_button(
+                label=f"📥 Download Tesla Workbook ({Path(tsla_wb).name})",
+                data=b_tsla,
+                file_name=Path(tsla_wb).name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                width="stretch",
+                key="dl_comp_tsla"
+            )
+
+
+# ==============================================================================
+# MAIN VIEWING AREA: SWITCHABLE TOP-LEVEL COMPANY DASHBOARDS
+# ==============================================================================
+
+target_filing_count = int(st.session_state.get("selected_filing_count", 4))
+custom_ticker_current = st.session_state.get("custom_ticker", "AAPL").strip().upper()
+
+top_tab_aapl, top_tab_tsla, top_tab_comp, top_tab_custom = st.tabs([
+    "🍎 Apple (AAPL)",
+    "⚡ Tesla (TSLA)",
+    "📊 Apple vs. Tesla",
+    "🔎 Custom Company"
+])
+
+# ------------------------------------------------------------------------------
+# TOP TAB 1: APPLE (AAPL)
+# ------------------------------------------------------------------------------
+with top_tab_aapl:
+    aapl_cached = get_cached_result("AAPL", target_filing_count)
+    if aapl_cached:
+        render_company_dashboard(aapl_cached, target_filing_count, prefix="aapl")
+    else:
+        st.info(f"💡 **Apple Inc. (AAPL)** has not been analyzed for this **{target_filing_count}-year horizon** yet. Select Apple in the sidebar Analysis Settings and click **🚀 Run Analysis** to generate the report.")
+
+# ------------------------------------------------------------------------------
+# TOP TAB 2: TESLA (TSLA)
+# ------------------------------------------------------------------------------
+with top_tab_tsla:
+    tsla_cached = get_cached_result("TSLA", target_filing_count)
+    if tsla_cached:
+        render_company_dashboard(tsla_cached, target_filing_count, prefix="tsla")
+    else:
+        st.info(f"💡 **Tesla, Inc. (TSLA)** has not been analyzed for this **{target_filing_count}-year horizon** yet. Select Tesla in the sidebar Analysis Settings and click **🚀 Run Analysis** to generate the report.")
+
+# ------------------------------------------------------------------------------
+# TOP TAB 3: APPLE VS. TESLA COMPARISON
+# ------------------------------------------------------------------------------
+with top_tab_comp:
+    aapl_comp = get_cached_result("AAPL", target_filing_count)
+    tsla_comp = get_cached_result("TSLA", target_filing_count)
+
+    if aapl_comp and tsla_comp:
+        render_comparison_dashboard(aapl_comp, tsla_comp, target_filing_count)
+    else:
+        st.info(f"💡 **Apple vs. Tesla Comparison requires both companies to be analyzed for the same {target_filing_count}-year horizon.**")
+        st.markdown(f"""
+        **Current Status for {target_filing_count}-Year Analysis Horizon:**
+        - 🍎 **Apple Inc. (AAPL):** {'✅ Ready for comparison' if aapl_comp else f'❌ Not analyzed yet for {target_filing_count} filings'}
+        - ⚡ **Tesla, Inc. (TSLA):** {'✅ Ready for comparison' if tsla_comp else f'❌ Not analyzed yet for {target_filing_count} filings'}
+
+        *Select the missing company in the sidebar Analysis Settings and click **🚀 Run Analysis** to generate its report. Once both are complete, this comparison will instantly activate.*
+        """)
+
+# ------------------------------------------------------------------------------
+# TOP TAB 4: CUSTOM COMPANY
+# ------------------------------------------------------------------------------
+with top_tab_custom:
+    if custom_ticker_current in ("AAPL", "TSLA"):
+        st.info("💡 This tab displays analyses for custom tickers (e.g. MSFT, NVDA, AMZN). Apple and Tesla have dedicated tabs above. Select **Custom Ticker** in the sidebar settings and enter another company's symbol to generate its report.")
+    else:
+        custom_cached = get_cached_result(custom_ticker_current, target_filing_count)
+        if custom_cached:
+            render_company_dashboard(custom_cached, target_filing_count, prefix="custom")
+        else:
+            st.info(f"💡 **Custom Company ({custom_ticker_current})** has not been analyzed for this **{target_filing_count}-year horizon** yet. Enter ticker symbol in sidebar Analysis Settings and click **🚀 Run Analysis** to generate the report.")
