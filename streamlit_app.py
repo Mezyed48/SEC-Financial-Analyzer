@@ -1076,118 +1076,177 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
     # TAB 5: SENTIMENT ANALYSIS
     # --------------------------------------------------------------------------
     with tab_sentiment:
-        st.subheader("📝 Loughran-McDonald Financial Sentiment Analysis")
-        st.caption("Item 7 MD&A narratives scored against the official Loughran-McDonald Master Sentiment Dictionary.")
+        st.subheader(f"📝 MD&A Sentiment Analysis — {company_name} ({ticker})")
+        st.caption("Item 7 Management's Discussion and Analysis (MD&A) narratives scored against the official Loughran-McDonald Master Sentiment Dictionary.")
 
-        chrono_years = [str(r["year"]) for r in analysis_data]
+        chrono_years = [f"FY {r['year']}" for r in analysis_data]
         pos_words = [r.get("positive", 0) for r in analysis_data]
         neg_words = [r.get("negative", 0) for r in analysis_data]
         pn_ratios = [r.get("pn_ratio") for r in analysis_data]
 
-        col_s1, col_s2 = st.columns(2)
+        # 1. POSITIVE VS. NEGATIVE WORD COUNTS
+        fig_pn_bars = go.Figure()
+        fig_pn_bars.add_trace(go.Bar(
+            x=chrono_years,
+            y=pos_words,
+            name="Positive Financial Words",
+            marker_color="#2B6CB0",
+            hovertemplate="<b>%{x}</b><br>Category: Positive Words<br>Word Count: %{y:,d}<extra></extra>"
+        ))
+        fig_pn_bars.add_trace(go.Bar(
+            x=chrono_years,
+            y=neg_words,
+            name="Negative Financial Words",
+            marker_color="#E4572E",
+            hovertemplate="<b>%{x}</b><br>Category: Negative Words<br>Word Count: %{y:,d}<extra></extra>"
+        ))
+        fig_pn_bars.update_layout(
+            title=f"<b>Loughran-McDonald MD&A Sentiment Word Counts ({ticker})</b>",
+            title_font=dict(size=15, color="#1F497D"),
+            barmode="group",
+            xaxis=dict(title="Fiscal Reporting Period", type="category", showgrid=True, gridcolor="#EDF2F7"),
+            yaxis=dict(title="Word Count (Item 7 MD&A)", showgrid=True, gridcolor="#EDF2F7"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            template="plotly_white",
+            height=380,
+            margin=dict(l=60, r=30, t=70, b=50)
+        )
+        st.plotly_chart(fig_pn_bars, width="stretch", key=f"{prefix}_{ticker}_pn_bars")
 
-        # GRAPH 1: Positive vs Negative Words (Grouped Bar Chart)
-        with col_s1:
-            fig_pn_bars = go.Figure()
-            fig_pn_bars.add_trace(go.Bar(
-                x=chrono_years, y=pos_words, name="Positive Words", marker_color="#2B6CB0",
-                hovertemplate="FY %{x}<br>Positive Words: %{y:,d}<extra></extra>"
-            ))
-            fig_pn_bars.add_trace(go.Bar(
-                x=chrono_years, y=neg_words, name="Negative Words", marker_color="#E4572E",
-                hovertemplate="FY %{x}<br>Negative Words: %{y:,d}<extra></extra>"
-            ))
-            fig_pn_bars.update_layout(
-                title="<b>1. Positive vs. Negative MD&A Word Counts</b>",
-                title_font=dict(size=14, color="#1F497D"),
-                barmode="group",
-                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                yaxis=dict(title="Word Matches", showgrid=True, gridcolor="#EDF2F7"),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                template="plotly_white", height=340, margin=dict(l=50, r=20, t=60, b=40)
-            )
-            st.plotly_chart(fig_pn_bars, width="stretch", key=f"{prefix}_{ticker}_pn_bars")
+        # 2. 10-YEAR SENTIMENT FREQUENCY DATASET
+        st.markdown("<br>", unsafe_allow_html=True)
+        freq_section_title = f"{num_years}-Year Sentiment Frequency Dataset" if num_years != 10 else "10-Year Sentiment Frequency Dataset"
+        st.subheader(f"📋 {freq_section_title}")
+        st.caption(f"Chronological MD&A word frequencies and positive/negative sentiment ratios across {num_years} fiscal periods (oldest to newest):")
 
-        # GRAPH 2: MD&A Positive-to-Negative Ratio (Line Chart)
-        with col_s2:
-            fig_pn_line = go.Figure()
-            fig_pn_line.add_trace(go.Scatter(
-                x=chrono_years, y=pn_ratios, mode="lines+markers",
-                name="P/N Ratio", line=dict(color="#1F497D", width=2.5), marker=dict(size=8, symbol="diamond"),
-                hovertemplate="FY %{x}<br>P/N Ratio: %{y:.2f}<extra></extra>"
-            ))
-            # Horizontal baseline at P/N = 1.0
-            fig_pn_line.add_hline(
-                y=1.0, line_dash="dash", line_color="#A0AEC0", line_width=1.5,
-                annotation_text="P/N = 1.0 (Neutral Baseline)", annotation_position="top right"
-            )
-            fig_pn_line.update_layout(
-                title="<b>2. MD&A Positive-to-Negative Ratio</b>",
-                title_font=dict(size=14, color="#1F497D"),
-                xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                yaxis=dict(title="P/N Ratio", showgrid=True, gridcolor="#EDF2F7", tickformat=".2f"),
-                template="plotly_white", height=340, margin=dict(l=50, r=20, t=60, b=40)
-            )
-            st.plotly_chart(fig_pn_line, width="stretch", key=f"{prefix}_{ticker}_pn_line")
+        freq_table_rows = []
+        for r in analysis_data:
+            tot = r.get("total_words", 0)
+            pos = r.get("positive", 0)
+            neg = r.get("negative", 0)
+            unc = r.get("other_sentiment", {}).get("Uncertainty")
+            lit = r.get("other_sentiment", {}).get("Litigious")
+            pn = r.get("pn_ratio")
+
+            pos_freq = (pos / tot * 100.0) if tot and tot > 0 else 0.0
+            neg_freq = (neg / tot * 100.0) if tot and tot > 0 else 0.0
+
+            freq_table_rows.append({
+                "Fiscal Year": f"FY {r['year']}",
+                "Total Words": f"{tot:,d}" if tot is not None else "N/A",
+                "Positive Count": f"{pos:,d}" if pos is not None else "N/A",
+                "Negative Count": f"{neg:,d}" if neg is not None else "N/A",
+                "Uncertainty Count": f"{unc:,d}" if unc is not None else "N/A",
+                "Litigious Count": f"{lit:,d}" if lit is not None else "N/A",
+                "P/N Ratio": f"{pn:.2f}" if pn is not None else "N/A",
+                "Pos Freq (%)": f"{pos_freq:.2f}%",
+                "Neg Freq (%)": f"{neg_freq:.2f}%"
+            })
+        st.dataframe(pd.DataFrame(freq_table_rows), width="stretch", hide_index=True)
+
+        # 3. P/N RATIO TREND
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📈 MD&A Positive-to-Negative Ratio")
+        st.caption("Chronological trajectory of Item 7 MD&A positive-to-negative sentiment score relative to the neutral baseline (P/N = 1.0).")
+
+        fig_pn_line = go.Figure()
+        fig_pn_line.add_trace(go.Scatter(
+            x=chrono_years,
+            y=pn_ratios,
+            mode="lines+markers",
+            name="P/N Ratio",
+            line=dict(color="#1F497D", width=3),
+            marker=dict(size=8, symbol="diamond"),
+            hovertemplate="<b>%{x}</b><br>P/N Ratio: %{y:.2f}<extra></extra>"
+        ))
+        fig_pn_line.add_hline(
+            y=1.0,
+            line_dash="dash",
+            line_color="#A0AEC0",
+            line_width=1.5,
+            annotation_text="P/N = 1.0 (Neutral Baseline)",
+            annotation_position="top right"
+        )
+        fig_pn_line.update_layout(
+            title=f"<b>MD&A Positive-to-Negative Ratio — {company_name} ({ticker})</b>",
+            title_font=dict(size=15, color="#1F497D"),
+            xaxis=dict(title="Fiscal Reporting Period", type="category", showgrid=True, gridcolor="#EDF2F7"),
+            yaxis=dict(title="P/N Ratio", showgrid=True, gridcolor="#EDF2F7", tickformat=".2f"),
+            template="plotly_white",
+            height=360,
+            margin=dict(l=60, r=40, t=60, b=50)
+        )
+        st.plotly_chart(fig_pn_line, width="stretch", key=f"{prefix}_{ticker}_pn_line")
 
         st.info("""
         **P/N Ratio Interpretation**:  
-        - **P/N > 1**: Positive Loughran-McDonald word matches exceeded negative matches.  
-        - **P/N < 1**: Negative word matches exceeded positive matches.  
-        - **Formula**: `Positive Words / Negative Words`
+        P/N > 1 means positive Loughran-McDonald word matches exceeded negative word matches. P/N < 1 means negative word matches exceeded positive word matches.
         """)
 
-        # GRAPH 3: Other Sentiment Category Trends
-        other_cats = [c for c in available_cats if c not in ("Positive", "Negative")]
-        if other_cats:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.subheader("3. Other Sentiment Category Trends")
-            selected_other_cats = st.multiselect(
-                "Select sentiment categories to plot:",
-                options=other_cats,
-                default=other_cats[:4] if len(other_cats) >= 4 else other_cats,
-                key=f"{prefix}_{ticker}_other_sent_select"
-            )
-
-            if selected_other_cats:
-                fig_other = go.Figure()
-                palette = ["#4A5568", "#D69E2E", "#805AD5", "#DD6B20", "#319795", "#E53E3E"]
-                for idx, cat in enumerate(selected_other_cats):
-                    cat_series = [r["other_sentiment"].get(cat, 0) for r in analysis_data]
-                    fig_other.add_trace(go.Scatter(
-                        x=chrono_years, y=cat_series, mode="lines+markers",
-                        name=cat, line=dict(color=palette[idx % len(palette)], width=2),
-                        marker=dict(size=6),
-                        hovertemplate=f"FY %{{x}}<br>{cat}: %{{y:,d}}<extra></extra>"
-                    ))
-                fig_other.update_layout(
-                    title="<b>Loughran-McDonald Domain-Specific Sentiment Word Trajectories</b>",
-                    title_font=dict(size=14, color="#1F497D"),
-                    xaxis=dict(title="Fiscal Year", type="category", showgrid=True, gridcolor="#EDF2F7"),
-                    yaxis=dict(title="Word Matches", showgrid=True, gridcolor="#EDF2F7"),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    template="plotly_white", height=340, margin=dict(l=50, r=20, t=60, b=40)
-                )
-                st.plotly_chart(fig_other, width="stretch", key=f"{prefix}_{ticker}_other_cats")
-
-        # Full Sentiment Table
+        # 4. DETAILED SENTIMENT DATA (Expander)
         st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("📋 Complete Loughran-McDonald Sentiment Score Table")
-        sent_table_data = []
-        for r in analysis_data:
-            row_dict = {
-                "Fiscal Year": f"FY {r['year']}",
-                "Total Words": f"{r['total_words']:,d}" if r["total_words"] is not None else "N/A",
-                "Positive": f"{r['positive']:,d}" if r["positive"] is not None else "N/A",
-                "Negative": f"{r['negative']:,d}" if r["negative"] is not None else "N/A"
-            }
-            for cat in other_cats:
-                val = r["other_sentiment"].get(cat)
-                row_dict[cat] = f"{val:,d}" if val is not None else "N/A"
-            row_dict["P/N Ratio"] = f"{r['pn_ratio']:.2f}" if r["pn_ratio"] is not None else "N/A"
-            sent_table_data.append(row_dict)
+        with st.expander("🔍 View Detailed Sentiment Categories", expanded=False):
+            st.caption("Complete breakdown of word counts across all 8 domain-specific Loughran-McDonald sentiment categories (ordered chronologically from oldest to newest):")
+            det_categories = [
+                "Positive", "Negative", "Uncertainty", "Litigious",
+                "Strong Modal", "Weak Modal", "Constraining", "Complexity"
+            ]
+            det_rows = []
+            for r in analysis_data:
+                row_det = {
+                    "Fiscal Year": f"FY {r['year']}",
+                    "Total Words": f"{r['total_words']:,d}" if r.get("total_words") is not None else "N/A",
+                    "Positive": f"{r['positive']:,d}" if r.get("positive") is not None else "N/A",
+                    "Negative": f"{r['negative']:,d}" if r.get("negative") is not None else "N/A"
+                }
+                for cat in det_categories[2:]:
+                    val = r.get("other_sentiment", {}).get(cat)
+                    row_det[cat] = f"{val:,d}" if val is not None else "N/A"
+                row_det["P/N Ratio"] = f"{r['pn_ratio']:.2f}" if r.get("pn_ratio") is not None else "N/A"
+                det_rows.append(row_det)
+            st.dataframe(pd.DataFrame(det_rows), width="stretch", hide_index=True)
 
-        st.dataframe(pd.DataFrame(sent_table_data), width="stretch", hide_index=True)
+        # 5. OTHER SENTIMENT CATEGORY TRENDS
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📊 Additional MD&A Sentiment Trends")
+        st.caption("Select domain-specific sentiment categories to examine their trajectory across fiscal reporting periods:")
+
+        multiselect_options = ["Uncertainty", "Litigious", "Strong Modal", "Weak Modal", "Constraining", "Complexity"]
+        avail_options = [c for c in multiselect_options if c in available_cats]
+        default_selections = [c for c in ["Uncertainty", "Litigious"] if c in avail_options]
+
+        selected_add_cats = st.multiselect(
+            "Select sentiment categories to plot:",
+            options=avail_options,
+            default=default_selections,
+            key=f"{prefix}_{ticker}_add_sent_select"
+        )
+
+        if selected_add_cats:
+            fig_add = go.Figure()
+            palette = ["#4A5568", "#D69E2E", "#805AD5", "#DD6B20", "#319795", "#E53E3E"]
+            for idx, cat in enumerate(selected_add_cats):
+                cat_series = [r.get("other_sentiment", {}).get(cat, 0) for r in analysis_data]
+                fig_add.add_trace(go.Scatter(
+                    x=chrono_years,
+                    y=cat_series,
+                    mode="lines+markers",
+                    name=cat,
+                    line=dict(color=palette[idx % len(palette)], width=2.5),
+                    marker=dict(size=7),
+                    hovertemplate=f"<b>%{{x}}</b><br>{cat}: %{{y:,d}} words<extra></extra>"
+                ))
+            fig_add.update_layout(
+                title=f"<b>Additional MD&A Sentiment Trends — {company_name} ({ticker})</b>",
+                title_font=dict(size=15, color="#1F497D"),
+                xaxis=dict(title="Fiscal Reporting Period", type="category", showgrid=True, gridcolor="#EDF2F7"),
+                yaxis=dict(title="Word Count (Item 7 MD&A)", showgrid=True, gridcolor="#EDF2F7"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                template="plotly_white",
+                height=380,
+                margin=dict(l=60, r=40, t=60, b=50)
+            )
+            st.plotly_chart(fig_add, width="stretch", key=f"{prefix}_{ticker}_add_sent_chart")
 
         dict_word_count = results.get("dict_info", {}).get("total_words", 0)
         st.caption(f"Dictionary Indexed: Loughran-McDonald Master Sentiment Dictionary ({dict_word_count:,d} words).")
