@@ -19,6 +19,7 @@ Runs on:
 
 import os
 from pathlib import Path
+import pickle
 import re
 import pandas as pd
 import plotly.graph_objects as go
@@ -71,7 +72,34 @@ if "sidebar_ticker_input" not in st.session_state:
     st.session_state.sidebar_ticker_input = "AAPL"
 
 if "selected_filing_count" not in st.session_state:
-    st.session_state.selected_filing_count = 4
+    # Matches the saved 10-year results so they show as soon as the app opens
+    st.session_state.selected_filing_count = 10
+
+
+def load_saved_results():
+    """
+    Load analyses written by save_results.py from 'saved_results/' so the
+    dashboard has data on first open instead of an empty page.
+    """
+    saved = {}
+    for pkl_path in sorted((PROJECT_ROOT / "saved_results").glob("*.pkl")):
+        try:
+            with open(pkl_path, "rb") as f:
+                res = pickle.load(f)
+        except Exception:
+            continue
+        # Workbook path is saved relative to the project so it works on any machine
+        res["output_filepath"] = str(PROJECT_ROOT / res["output_filepath"])
+        saved[(res["ticker"], len(res["analysis_data"]))] = res
+        saved.setdefault(res["ticker"], res)
+    return saved
+
+
+if "saved_results_loaded" not in st.session_state:
+    # setdefault: a live run in this session always takes priority over saved data
+    for cache_key, saved_res in load_saved_results().items():
+        st.session_state.analysis_cache.setdefault(cache_key, saved_res)
+    st.session_state.saved_results_loaded = True
 
 is_dark = (st.session_state.theme_mode == "🌙 Dark")
 
@@ -426,7 +454,7 @@ if "sidebar_ticker_input" not in st.session_state:
     st.session_state.sidebar_ticker_input = "AAPL"
 
 if "selected_filing_count" not in st.session_state:
-    st.session_state.selected_filing_count = 4
+    st.session_state.selected_filing_count = 10
 
 
 # ==============================================================================
@@ -633,6 +661,7 @@ def apply_chart_theme(
         fig.update_yaxes(
             title_text=yaxis2_title,
             showgrid=False,
+            tickformat=".2f",  # P/N ratio ticks like 0.75, not 0.7492
             title_font=dict(color=THEME["text_secondary"]),
             tickfont=dict(color=THEME["text_secondary"]),
             secondary_y=True
@@ -725,9 +754,9 @@ with st.sidebar:
         "Number of Recent 10-K Filings:",
         min_value=1,
         max_value=10,
-        value=int(st.session_state.get("selected_filing_count", 4)),
+        value=int(st.session_state.get("selected_filing_count", 10)),
         step=1,
-        help="Select between 1 and 10 fiscal years (default is 4; final assignment uses 10).",
+        help="Select between 1 and 10 fiscal years (default is 10, the final assignment horizon).",
         key="sidebar_filing_count_input"
     )
     st.session_state.selected_filing_count = input_filing_count
@@ -866,6 +895,44 @@ if run_btn:
 
 
 # ==============================================================================
+# HELPER: BALANCE SHEET TIE-OUT CHECK
+# ==============================================================================
+
+def check_balance_sheet(statement_data, years):
+    """
+    Verify that Total Assets equals Total Liabilities and Equity for each year,
+    confirming the balance sheet was extracted completely and correctly.
+
+    Returns:
+        tuple: (years_tied, years_checked, list of years that did not tie)
+    """
+    bs_stmt = statement_data.get("Balance Sheet", {})
+    _, ta_vals, _ = main.find_statement_account_data(
+        bs_stmt, patterns=["total assets"],
+        exclude_terms=["current assets", "noncurrent", "non-current", "equity", "liabilities and", "per share"]
+    )
+    _, tle_vals, _ = main.find_statement_account_data(
+        bs_stmt,
+        patterns=[
+            "total liabilities and stockholders equity",
+            "total liabilities and shareholders equity",
+            "total liabilities and equity"
+        ],
+        exclude_terms=["per share"]
+    )
+    checked, failed = 0, []
+    for yr in years:
+        ta, tle = ta_vals.get(yr), tle_vals.get(yr)
+        if ta is None or tle is None:
+            continue
+        checked += 1
+        # Allow $1 of rounding in statements reported in millions or thousands
+        if abs(ta - tle) > 1:
+            failed.append(yr)
+    return checked - len(failed), checked, failed
+
+
+# ==============================================================================
 # RENDER INDIVIDUAL COMPANY DASHBOARD (REUSABLE COMPONENT)
 # ==============================================================================
 
@@ -890,6 +957,26 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
     reporting_scope = f"{num_years}-Year SEC 10-K Analysis"
     cik_str = str(cik).zfill(10)
 
+    # Balance sheet tie-out badge: Total Assets = Total Liabilities and Equity
+    tied, checked, untied_years = check_balance_sheet(statement_data, [str(r["year"]) for r in analysis_data])
+    if checked and not untied_years:
+        check_color = THEME["chart_positive_color"]
+        check_text = f"✓ Balance sheet ties out ({tied}/{checked} years)"
+        check_tip = "Total Assets = Total Liabilities and Equity in every year analyzed"
+    elif checked:
+        check_color = "#D69E2E"
+        check_text = f"⚠ Balance sheet ties out {tied}/{checked} years"
+        check_tip = "Does not tie in FY " + ", ".join(untied_years)
+    else:
+        check_color = THEME["text_secondary"]
+        check_text = "Balance check unavailable"
+        check_tip = "Total Assets or Total Liabilities and Equity line not found"
+    balance_badge = (
+        f'<span title="{check_tip}" style="border: 1px solid {check_color}; color: {check_color}; '
+        f'padding: 0.35rem 0.85rem; border-radius: 20px; font-size: 0.85rem; font-weight: 600; '
+        f'display: inline-block;">{check_text}</span>'
+    )
+
     # Polished Company Header
     st.markdown(f"""
     <div class="company-header-card">
@@ -905,17 +992,22 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
             <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                 <span class="company-badge">📋 {reporting_scope}</span>
                 <span class="company-badge-secondary">📅 FY {oldest['year']} – FY {latest['year']}</span>
+                {balance_badge}
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    if results.get("saved_on"):
+        st.caption(f"📁 Showing saved results generated on {results['saved_on']}. "
+                   f"Click **🚀 Run Analysis** to refresh with live SEC data.")
 
     # Seven Navigation Tabs for Company Dashboard
     tab_overview, tab_stock_sent, tab_statements, tab_ratios, tab_sentiment, tab_growth, tab_download = st.tabs([
         "📊 Overview",
         "📈 Stock & Sentiment",
         "📑 Financial Statements",
-        "📉 10-Year Financial Ratios",
+        f"📉 {num_years}-Year Financial Ratios",
         "📝 Sentiment Analysis",
         "📊 Growth & Performance",
         "📥 Download Report"
@@ -1171,6 +1263,42 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
         )
         st.plotly_chart(fig_dual, width="stretch", key=f"{prefix}_{ticker}_dual_axis")
 
+        # Correlation for exactly what the chart shows: stock price level vs. P/N Ratio
+        level_pairs = [
+            (r["stock_price"], r["pn_ratio"]) for r in analysis_data
+            if r.get("stock_price") is not None and r.get("pn_ratio") is not None
+        ]
+        level_corr = None
+        if len(level_pairs) >= 3:
+            s_price = pd.Series([p for p, _ in level_pairs])
+            s_level_pn = pd.Series([pn for _, pn in level_pairs])
+            if s_price.std() > 0 and s_level_pn.std() > 0:
+                level_corr = s_price.corr(s_level_pn)
+
+        if level_corr is not None:
+            if abs(level_corr) >= 0.7:
+                strength = "strong"
+            elif abs(level_corr) >= 0.4:
+                strength = "moderate"
+            else:
+                strength = "weak"
+            direction = "positive" if level_corr >= 0 else "negative"
+            lc1, lc2 = st.columns([1, 3])
+            lc1.metric(
+                label="Price vs. P/N (r)",
+                value=f"{level_corr:+.2f}",
+                help="Pearson correlation between the fiscal year-end stock price and that year's MD&A P/N Ratio."
+            )
+            lc2.markdown(
+                f"Across **{len(level_pairs)} fiscal years**, stock price and MD&A tone show a "
+                f"**{strength} {direction}** relationship (r = {level_corr:+.2f}).  \n"
+                f"⚠️ With only {len(level_pairs)} annual observations this is descriptive, not statistically "
+                f"reliable, and correlation does not imply causation."
+            )
+        else:
+            st.caption(f"Correlation needs at least 3 years with both a stock price and a P/N Ratio "
+                       f"(currently {len(level_pairs)}).")
+
         # Annual Stock Return Chart (New Feature)
         st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("📊 Annual Stock Price Return (% YoY)")
@@ -1325,10 +1453,10 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
                     st.warning(f"No statement data available for {stmt_name}.")
 
     # --------------------------------------------------------------------------
-    # TAB 4: 10-YEAR FINANCIAL RATIOS
+    # TAB 4: MULTI-YEAR FINANCIAL RATIOS
     # --------------------------------------------------------------------------
     with tab_ratios:
-        st.subheader("📉 10-Year Financial Ratio Trajectories")
+        st.subheader(f"📉 {num_years}-Year Financial Ratio Trajectories")
         st.caption(f"Multi-year financial ratio trend visualization for **{company_name}**.")
 
         chrono_years = [str(r["year"]) for r in analysis_data]
@@ -1428,10 +1556,33 @@ def render_company_dashboard(results, target_filing_count, prefix="company"):
         - **Current Ratio (Liquidity)**: `Current Assets / Current Liabilities`
         - **Debt-to-Assets Ratio (Solvency)**: `Total Liabilities / Total Assets`
         - **Total Asset Turnover (Efficiency)**: `Revenue / Average Total Assets`
+        - **Average Total Assets**: `(Beginning Total Assets + Ending Total Assets) / 2`
         - **Net Profit Margin (Profitability)**: `Net Income / Revenue`
         """)
 
         with st.expander("🔍 View Underlying Financial Statement Accounts (Audit Verification)"):
+            # Exact statement line each ratio input was taken from
+            st.markdown("**Statement line used for each ratio input**")
+            matched_labels = raw_accounts_info.get("labels", {})
+            label_rows = [
+                ("Current Assets", "Balance Sheet", "current_assets", "Current Ratio"),
+                ("Current Liabilities", "Balance Sheet", "current_liabilities", "Current Ratio"),
+                ("Total Liabilities", "Balance Sheet", "total_liabilities", "Debt-to-Assets"),
+                ("Total Assets", "Balance Sheet", "total_assets", "Debt-to-Assets, Asset Turnover"),
+                ("Revenue", "Income Statement", "revenue", "Asset Turnover, Net Profit Margin"),
+                ("Net Income", "Income Statement", "net_income", "Net Profit Margin"),
+            ]
+            st.dataframe(pd.DataFrame([
+                {
+                    "Ratio Input": name,
+                    "Source Statement": source,
+                    "Matched 10-K Line Item": matched_labels.get(key) or "⚠️ Not found",
+                    "Used In": used_in
+                }
+                for name, source, key, used_in in label_rows
+            ]), width="stretch", hide_index=True)
+
+            st.markdown("**Values used each year**")
             by_year = raw_accounts_info.get("by_year", {})
             accts_data = []
             for r in analysis_data:
@@ -2173,7 +2324,7 @@ def render_comparison_dashboard(aapl_results, tsla_results, target_filing_count)
 # MAIN VIEWING AREA: SWITCHABLE TOP-LEVEL COMPANY DASHBOARDS
 # ==============================================================================
 
-target_filing_count = int(st.session_state.get("selected_filing_count", 4))
+target_filing_count = int(st.session_state.get("selected_filing_count", 10))
 custom_ticker_current = st.session_state.get("custom_ticker", "AAPL").strip().upper()
 
 top_tab_aapl, top_tab_tsla, top_tab_comp, top_tab_custom = st.tabs([
